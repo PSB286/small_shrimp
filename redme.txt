@@ -1,0 +1,10 @@
+1、运行虚拟环境
+    source venv/Scripts/activate
+2、下载热拔插开发调试环境
+	pip install uvicorn[standard] -i https://pypi.tuna.tsinghua.edu.cn/simple
+3、下载python对应的依赖
+	 pip install -r requirements.txt
+4、在main.py路径下运行
+	uvicorn main:app --reload
+5、出现网址，复制粘贴到网站并刷新，出现聊天框
+6、恭喜你打开了小虾米。
