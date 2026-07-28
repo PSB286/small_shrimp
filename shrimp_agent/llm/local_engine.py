@@ -76,7 +76,7 @@ class LocalEngine:
         
         # 处理 "再x3" 格式 - 提取数字
         if "再x" in text_clean or "再×" in text_clean:
-            import re
+            # 直接使用全局 re（文件顶部已导入）
             match = re.search(r'再[x×](\d+)', text_clean)
             if match:
                 # 从上下文获取上一次结果（由调用方处理）
