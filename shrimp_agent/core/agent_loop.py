@@ -159,9 +159,8 @@ class AgentLoop:
             return f"[错误] 修改技能失败: {str(e)}"
 
     def _execute_cloud(self, user_input: str, history: list) -> str:
-        """云端推理"""
+        """云端推理 - 执行技能后直接返回，防止重复调用"""
         step = 0
-
         while step < self.max_steps:
             step += 1
 
@@ -185,12 +184,11 @@ class AgentLoop:
 
                     # 执行技能
                     output = self.skills.execute(action, params)
+
+                    # 🔥 关键修改：无论执行结果如何，直接返回，不再继续循环
                     if output and output.startswith("[错误]"):
                         return output
-
-                    history.append({"role": "assistant", "content": str(result)})
-                    history.append({"role": "user", "content": f"结果: {output}。请继续。"})
-                    continue
+                    return output  # 直接返回，避免重复调用
 
             return "[错误] AI 输出格式异常"
 
