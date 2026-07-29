@@ -1,3 +1,5 @@
+# 一、环境搭建
+
 1、运行虚拟环境
     source venv/Scripts/activate
 2、下载热拔插开发调试环境
@@ -8,3 +10,33 @@
 	uvicorn main:app --reload
 5、出现网址，复制粘贴到网站并刷新，出现聊天框
 6、恭喜你打开了小虾米。
+
+
+
+# 二、分支结构
+
+分支分为：main（主分支）、dev(开发分支)。
+***每一次合并主分支都要保证开发分支正常***
+
+
+
+
+
+以下为主分支的何合入的方式
+
+1. 确保 dev 已测试通过
+
+git checkout dev
+git pull origin dev
+
+2. 合并到 main（本地操作，或通过 PR）
+
+git checkout main
+git pull origin main
+git merge dev
+git push origin main
+
+3. 打 Tag
+
+git tag v1.0.0
+git push origin v1.0.0
