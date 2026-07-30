@@ -1,192 +1,181 @@
 """
-本地引擎 - 增强版
-支持：更灵活的数学表达式、基础对话、时间查询、修改技能意图识别
+本地引擎 - 增强意图识别 + 昵称支持
 """
 
-import datetime
 import re
-import random
+import datetime
+import math
 
 
 class LocalEngine:
-    """本地处理引擎（无需联网）"""
-
     def __init__(self):
-        # 招呼语库
-        self.greetings = [
-            "你好！我是小虾米，有什么能帮你的？",
-            "嗨！很高兴见到你！",
-            "你好呀！今天想让我帮你做什么呢？",
-            "欢迎！小虾米随时为你服务。"
+        self.context = {}
+
+    def classify(self, user_input: str) -> dict:
+        """
+        意图分类
+        """
+        user_input = user_input.strip()
+
+        # 1. 昵称设置检测（最高优先级）
+        name_patterns = [
+            r'以后你就叫',
+            r'叫我',
+            r'改名',
+            r'称呼我',
+            r'你就叫',
+            r'给你取名',
+            r'取名叫',
         ]
-        self.farewells = [
-            "再见！随时来找我聊天！",
-            "拜拜！期待下次见面！",
-            "好的，有需要再找我！"
-        ]
-        # 闲聊回复库
-        self.small_talk = {
-            "你好": "你好！我是小虾米，很高兴认识你！",
-            "嗨": "嗨！今天心情怎么样？",
-            "哈哈": "哈哈，你笑什么呀？",
-            "谢谢": "不客气！能帮到你我很开心！",
-            "你是谁": "我是小虾米，一个智能助手，可以帮助你完成各种任务！",
-            "你会做什么": "我可以帮你计算、截图、打开应用、查询时间，还能根据你的需求自动生成新功能！"
-        }
+        for pattern in name_patterns:
+            if pattern in user_input:
+                return {"type": "set_name", "confidence": 0.95}
 
-    def classify(self, text: str) -> dict:
+        # 2. 技能管理类
+        if re.search(r'(?:列出|显示|查看|有哪些)\s*技能', user_input):
+            return {"type": "list_skills", "confidence": 0.9}
+
+        if re.search(r'删除\s*技能\s*\w+', user_input) or re.search(r'删除\s*\w+', user_input):
+            return {"type": "delete_skill", "confidence": 0.8}
+
+        if re.search(r'修改\s*技能', user_input) or re.search(r'改(?:一下)?\s*\w+', user_input):
+            return {"type": "modify_skill", "confidence": 0.8}
+
+        # 3. 数学计算
+        if re.search(r'[\d.]+[\s]*[+\-*/%][\s]*[\d.]+', user_input):
+            return {"type": "math", "confidence": 0.95}
+
+        # 4. 时间查询
+        if any(kw in user_input for kw in ["现在几点", "几点了", "当前时间", "现在时间"]):
+            return {"type": "time", "confidence": 0.95}
+
+        # 5. 日期查询
+        if any(kw in user_input for kw in ["今天几号", "今天星期", "什么日子"]):
+            return {"type": "date", "confidence": 0.9}
+
+        # 6. 问候
+        if any(kw in user_input for kw in ["你好", "hi", "hello", "嗨", "在吗"]):
+            return {"type": "greeting", "confidence": 0.8}
+
+        # 7. 感谢
+        if any(kw in user_input for kw in ["谢谢", "感谢", "多谢"]):
+            return {"type": "thanks", "confidence": 0.8}
+
+        # 8. 询问记忆
+        if any(kw in user_input for kw in ["还记得", "记得吗", "你记得", "记忆"]):
+            return {"type": "query_memory", "confidence": 0.7}
+
+        # 默认
+        return {"type": "unknown", "confidence": 0.3}
+
+    def execute(self, intent: dict, user_input: str, context: dict) -> str:
         """
-        识别意图
-        返回: {"type": "time"|"math"|"greeting"|"chat"|"unknown"|"modify_skill"|"delete_skill"|"list_skills", "data": ...}
-        """
-        text_lower = text.lower().strip()
-
-        # 1. 时间查询
-        if any(kw in text_lower for kw in ["几点", "什么时间", "现在时间", "当前时间"]):
-            return {"type": "time"}
-
-        # 2. 数学计算（支持多种格式）
-        math_result = self._parse_math(text)
-        if math_result is not None:
-            return {"type": "math", "data": math_result}
-
-        # 3. 修改技能意图
-        modify_keywords = ["修改技能", "改一下技能", "把技能改成", "技能改成", "改成只", "调整技能"]
-        if any(kw in text_lower for kw in modify_keywords):
-            return {"type": "modify_skill", "data": text}
-
-        # 4. 删除技能意图
-        delete_keywords = ["删除技能", "移除技能", "去掉技能"]
-        if any(kw in text_lower for kw in delete_keywords):
-            return {"type": "delete_skill", "data": text}
-
-        # 5. 列出技能意图
-        list_keywords = ["列出技能", "技能列表", "有什么技能", "查看技能"]
-        if any(kw in text_lower for kw in list_keywords):
-            return {"type": "list_skills", "data": text}
-
-        # 6. 问候和告别
-        if any(kw in text_lower for kw in ["你好", "嗨", "hi", "hello", "您好"]):
-            return {"type": "greeting"}
-        if any(kw in text_lower for kw in ["再见", "拜拜", "bye", "goodbye"]):
-            return {"type": "farewell"}
-
-        # 7. 闲聊
-        for key in self.small_talk:
-            if key in text_lower:
-                return {"type": "chat", "data": key}
-
-        # 8. 感谢
-        if any(kw in text_lower for kw in ["谢谢", "感谢", "多谢"]):
-            return {"type": "thank"}
-
-        return {"type": "unknown"}
-
-    def _parse_math(self, text: str):
-        """
-        解析数学表达式（支持多种格式）
-        支持：3+5, 3*2, 3x2 (自动转换), 3X2, 再x3 (提取数字)
-        """
-        text_clean = text.replace(" ", "").replace("等于多少", "").replace("是多少", "")
-
-        # 处理 "再x3" 格式 - 提取数字
-        if "再x" in text_clean or "再×" in text_clean:
-            # 直接使用全局 re（文件顶部已导入）
-            match = re.search(r'再[x×](\d+)', text_clean)
-            if match:
-                # 从上下文获取上一次结果（由调用方处理）
-                return {"need_context": True, "value": int(match.group(1))}
-
-        # 替换中文符号
-        text_clean = text_clean.replace("×", "*").replace("x", "*").replace("X", "*")
-        text_clean = text_clean.replace("÷", "/").replace("除以", "/")
-        text_clean = text_clean.replace("加", "+").replace("减", "-").replace("乘", "*")
-
-        # 提取数字和运算符
-        pattern = r'[\d.]+[\+\-\*/][\d.]+'
-        match = re.search(pattern, text_clean)
-        if match:
-            try:
-                expr = match.group()
-                result = eval(expr)
-                return {"expression": expr, "result": result}
-            except:
-                pass
-
-        # 提取单个数字（用于"x3"场景，但需要上下文）
-        numbers = re.findall(r'(\d+)', text_clean)
-        if len(numbers) == 1 and not re.search(r'[\+\-\*/]', text_clean):
-            return {"need_context": True, "value": int(numbers[0])}
-
-        return None
-
-    def execute(self, intent: dict, text: str, context: dict = None) -> str:
-        """
-        执行本地指令
-        context: 可选上下文（如上一次计算结果）
-        返回: 字符串结果，或 None（表示需要云端处理）
+        执行本地意图
         """
         intent_type = intent.get("type")
 
-        # 修改技能、删除技能、列出技能 → 返回 None，让上层处理
-        if intent_type in ["modify_skill", "delete_skill", "list_skills"]:
-            return None
-
-        if intent_type == "time":
-            now = datetime.datetime.now().strftime("%Y年%m月%d日 %H:%M:%S")
-            return f"现在时间是：{now}"
+        if intent_type == "set_name":
+            return self._handle_set_name(user_input, context)
 
         if intent_type == "math":
-            data = intent.get("data", {})
+            return self._handle_math(user_input, context)
 
-            # 需要上下文（如"再x3"）
-            if data.get("need_context") and context:
-                last_value = context.get("last_math_result")
-                if last_value is not None:
-                    value = data.get("value", 1)
-                    result = last_value * value
-                    return f"计算结果：{result}"
-                return "请先告诉我一个数字，比如 '3+5'"
+        if intent_type == "time":
+            return self._handle_time()
 
-            # 普通计算
-            if "result" in data:
-                return f"计算结果：{data['result']}"
+        if intent_type == "date":
+            return self._handle_date()
 
         if intent_type == "greeting":
-            return random.choice(self.greetings)
+            agent_name = context.get("agent_name", "GGB小虾米")
+            return f"你好！我是 **{agent_name}** ，有什么可以帮你的吗？😊"
 
-        if intent_type == "farewell":
-            return random.choice(self.farewells)
+        if intent_type == "thanks":
+            return "不客气！很高兴能帮到你！😊"
 
-        if intent_type == "chat":
-            key = intent.get("data")
-            return self.small_talk.get(key, "嗯，我听着呢！继续说吧。")
-
-        if intent_type == "thank":
-            return "不客气！还有什么需要帮忙的吗？"
+        if intent_type == "query_memory":
+            return None  # 交给云端处理
 
         return None
 
-    def is_math_expression(self, text: str) -> bool:
-        """检查是否为数学表达式"""
-        return bool(re.search(r'[\d.]+[\+\-\*/xX×÷][\d.]+', text))
-
-    def extract_number(self, text: str) -> int:
-        """提取数字"""
-        numbers = re.findall(r'(\d+)', text)
-        return int(numbers[0]) if numbers else None
-
-    def extract_skill_name(self, text: str) -> str:
-        """从文本中提取技能名称"""
-        # 匹配 "修改技能 X" 或 "删除技能 X" 或 "把 X 技能改成"
+    def _handle_set_name(self, user_input: str, context: dict) -> str:
+        """处理昵称设置"""
         patterns = [
-            r'(?:修改技能|改一下技能|删除技能|移除技能|去掉技能)\s*[：:]\s*(\w+)',
-            r'(?:修改技能|改一下技能|删除技能|移除技能|去掉技能)\s+(\w+)',
-            r'把\s*(\w+)\s*(?:技能)?\s*(?:改成|改为)',
-            r'技能\s*(\w+)\s*(?:改成|改为)',
+            r'(?:以后|从现在开始|今后|从今天起)\s*你就叫\s*([^\s，,。.！!？?]+)',
+            r'(?:以后|从现在开始|今后|从今天起)\s*叫我\s*([^\s，,。.！!？?]+)',
+            r'你就叫\s*([^\s，,。.！!？?]+)',
+            r'叫我\s*([^\s，,。.！!？?]+)',
+            r'改名为?\s*([^\s，,。.！!？?]+)',
+            r'改名成\s*([^\s，,。.！!？?]+)',
+            r'称呼(?:我|你)\s*([^\s，,。.！!？?]+)',
+            r'给你取名\s*([^\s，,。.！!？?]+)',
+            r'取名叫\s*([^\s，,。.！!？?]+)',
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, user_input)
+            if match:
+                new_name = match.group(1).strip()
+                new_name = re.sub(r'[，,。.！!？?、；;：:]', '', new_name)
+
+                if not new_name or len(new_name) > 20:
+                    return None
+
+                context["agent_name"] = new_name
+                responses = [
+                    f"好的！以后我就叫 **{new_name}** 啦！😊",
+                    f"收到！从现在开始，请叫我 **{new_name}** ！✨",
+                    f"没问题！我的新名字是 **{new_name}** ，请多指教！🌟",
+                ]
+                import random
+                return random.choice(responses)
+
+        return "请告诉我你想让我叫什么名字？例如：'以后你就叫小可爱'"
+
+    def _handle_math(self, user_input: str, context: dict) -> str:
+        """处理数学计算"""
+        try:
+            expression = re.sub(r'[×xX]', '*', user_input)
+            expression = re.sub(r'[÷]', '/', expression)
+
+            if not re.match(r'^[\d\s+\-*/%().]+$', expression):
+                return None
+
+            result = eval(expression)
+
+            context["last_math_result"] = float(result) if isinstance(result, (int, float)) else None
+
+            return f"计算结果：{result}"
+        except:
+            return None
+
+    def _handle_time(self) -> str:
+        """处理时间查询"""
+        now = datetime.datetime.now()
+        return f"当前时间：{now.strftime('%H:%M:%S')}"
+
+    def _handle_date(self) -> str:
+        """处理日期查询"""
+        now = datetime.datetime.now()
+        weekdays = ["一", "二", "三", "四", "五", "六", "日"]
+        return f"今天是 {now.strftime('%Y年%m月%d日')} 星期{weekdays[now.weekday()]}"
+
+    def extract_skill_name(self, user_input: str) -> str:
+        """提取技能名称"""
+        patterns = [
+            r'(?:删除|修改)\s*技能\s*(\w+)',
+            r'(?:删除|修改)\s*(\w+)',
+            r'技能\s*(\w+)',
         ]
         for pattern in patterns:
-            match = re.search(pattern, text)
+            match = re.search(pattern, user_input)
             if match:
                 return match.group(1)
+        return None
+
+    def extract_number(self, user_input: str) -> float:
+        """提取数字"""
+        match = re.search(r'[\d.]+', user_input)
+        if match:
+            return float(match.group())
         return None

@@ -1,3 +1,7 @@
+"""
+技能管理器 - 加载、执行、管理技能
+"""
+
 import os
 import importlib.util
 import inspect
@@ -18,7 +22,7 @@ class SkillManager:
             os.makedirs(self.skills_dir)
             return
 
-        self.skills = {}  # 清空
+        self.skills = {}
         for filename in os.listdir(self.skills_dir):
             if filename.endswith(".py") and filename != "__init__.py":
                 skill_name = filename[:-3]
@@ -87,15 +91,12 @@ class SkillManager:
             return f"[错误] 技能 {skill_name} 不存在"
 
         try:
-            # 备份原文件
             backup_path = filepath + ".backup"
             shutil.copy2(filepath, backup_path)
 
-            # 写入新代码
             with open(filepath, "w", encoding="utf-8") as f:
                 f.write(new_code)
 
-            # 重新加载技能
             self.reload_skills()
             return f"[成功] 技能 {skill_name} 已修改并重新加载"
         except Exception as e:
@@ -124,3 +125,25 @@ class SkillManager:
         for name, info in self.skills.items():
             lines.append(f"  📦 {name} : {info['description']}")
         return "\n".join(lines)
+
+    def toggle_skill(self, skill_name: str, enabled: bool) -> bool:
+        """切换技能启用状态"""
+        # 这里可以实现更复杂的启用/禁用逻辑
+        # 目前简单实现：重命名文件或添加禁用标记
+        if skill_name not in self.skills:
+            return False
+
+        # 简单实现：如果禁用，重命名为 .disabled
+        filepath = os.path.join(self.skills_dir, f"{skill_name}.py")
+        disabled_path = os.path.join(self.skills_dir, f"{skill_name}.py.disabled")
+
+        if enabled:
+            if os.path.exists(disabled_path):
+                os.rename(disabled_path, filepath)
+                self.reload_skills()
+        else:
+            if os.path.exists(filepath):
+                os.rename(filepath, disabled_path)
+                self.reload_skills()
+
+        return True

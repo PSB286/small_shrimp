@@ -1,54 +1,33 @@
-class ShortTermMemory:
-    def __init__(self, max_length=20):
-        self.max_length = max_length
-        self.history = []
+"""
+短期记忆模块 - 存储对话历史
+"""
 
-    def add(self, user_msg: str, assistant_msg: str):
-        """添加对话轮次"""
-        self.history.append({"role": "user", "content": user_msg})
-        self.history.append({"role": "assistant", "content": assistant_msg})
-        
-        # 超过长度，滑动窗口
-        if len(self.history) > self.max_length * 2:
-            # 保留最近 20 条（10轮对话）
-            self.history = self.history[-20:]
+from collections import deque
 
-    def get_history(self):
-        """获取当前历史"""
-        return self.history.copy()
-
-    def clear(self):
-        """清空历史"""
-        self.history = []
 
 class ShortTermMemory:
     def __init__(self, max_length=20):
-        self.max_length = max_length
-        self.history = []
+        self.messages = deque(maxlen=max_length)
 
     def add(self, user_msg: str, assistant_msg: str):
-        """添加对话轮次"""
-        self.history.append({"role": "user", "content": user_msg})
-        self.history.append({"role": "assistant", "content": assistant_msg})
-        
-        # 超过长度，滑动窗口
-        if len(self.history) > self.max_length * 2:
-            self.history = self.history[-20:]
-
-    def add_system_message(self, message: str):
-        """添加系统消息（不显示给用户，但保留在上下文中）"""
-        self.history.append({"role": "system", "content": message})
-        # 限制长度
-        if len(self.history) > self.max_length * 2 + 2:
-            # 保留系统消息和最近的对话
-            system_msgs = [m for m in self.history if m.get("role") == "system"]
-            other_msgs = [m for m in self.history if m.get("role") != "system"]
-            self.history = system_msgs[-5:] + other_msgs[-20:]
+        """添加对话"""
+        self.messages.append({
+            "role": "user",
+            "content": user_msg
+        })
+        self.messages.append({
+            "role": "assistant",
+            "content": assistant_msg
+        })
 
     def get_history(self):
-        """获取当前历史"""
-        return self.history.copy()
+        """获取对话历史"""
+        return list(self.messages)
 
     def clear(self):
-        """清空历史"""
-        self.history = []
+        """清空记忆"""
+        self.messages.clear()
+
+    def get_last_n(self, n: int):
+        """获取最近 n 条消息"""
+        return list(self.messages)[-n:]
