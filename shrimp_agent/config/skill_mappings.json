@@ -1,0 +1,55 @@
+{
+  "mappings": [
+    {
+      "keywords": [
+        "截个图",
+        "截图",
+        "屏幕截图",
+        "截屏"
+      ],
+      "skill": "screenshot",
+      "description": "截取屏幕截图"
+    },
+    {
+      "keywords": [
+        "打开计算器",
+        "计算器"
+      ],
+      "skill": "open_calculator",
+      "description": "打开计算器"
+    },
+    {
+      "keywords": [
+        "打开浏览器",
+        "浏览器"
+      ],
+      "skill": "browser",
+      "description": "打开浏览器"
+    },
+    {
+      "keywords": [
+        "截取屏幕截图"
+      ],
+      "skill": "take_screenshot",
+      "description": "截取当前屏幕截图并保存为PNG文件"
+    },
+    {
+      "keywords": [
+        "计算机"
+      ],
+      "skill": "open_computer",
+      "description": "打开系统计算器应用"
+    },
+    {
+      "keywords": [
+        "图画"
+      ],
+      "skill": "open_paint",
+      "description": "打开系统图画应用"
+    }
+  ],
+  "auto_create": true,
+  "patterns": {
+    "open": "^(?:打开|运行|启动|执行|使用)\\s*(.+)$"
+  }
+}

@@ -1,8 +1,8 @@
 {
   "user_info": {
     "name": {
-      "value": "GGBO",
-      "updated_at": "2026-07-30T21:31:20.879545"
+      "value": null,
+      "updated_at": "2026-08-10T17:24:28.528402"
     }
   },
   "preferences": {
@@ -14,6 +14,6 @@
   "important_facts": [],
   "custom_memories": [],
   "conversation_summary": "",
-  "last_updated": "2026-07-30T21:31:46.524563",
+  "last_updated": "2026-08-10T17:24:28.528402",
   "created_at": "2026-07-30T21:22:14.984783"
 }

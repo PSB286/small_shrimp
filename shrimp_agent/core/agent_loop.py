@@ -4,6 +4,7 @@ GGB小虾米 核心 Agent
 """
 
 from core.skill_manager import SkillManager
+from core.skill_matcher import SkillMatcher
 from memory.compressed_memory import CompressedMemory
 from core.memory_integration import MemoryIntegration
 from utils.logger import logger
@@ -17,12 +18,13 @@ import datetime
 class AgentLoop:
     def __init__(self):
         self.skills = SkillManager()
+        self.matcher = SkillMatcher()  # 新增匹配器
         self.memory = CompressedMemory()
         self.memory_integration = MemoryIntegration()
         self.permanent_memory = self.memory_integration.permanent
         self.cloud = CloudEngine()
         self.agent_name = "GGB小虾米"
-
+        
         saved_name = self.permanent_memory.get_user_name()
         if saved_name:
             self.agent_name = saved_name
@@ -31,12 +33,12 @@ class AgentLoop:
         self.cloud.set_skills_info(self.skills.get_skills_info())
         self.cloud.set_agent_name(self.agent_name)
         self._update_memory_context()
-
+    
     def _update_memory_context(self):
         memory_context = self.memory_integration.get_memory_context()
         if memory_context:
             self.cloud.set_memory_context(memory_context)
-
+    
     def _sync_context_from_memory(self):
         saved_name = self.permanent_memory.get_user_name()
         if saved_name:
@@ -83,13 +85,108 @@ class AgentLoop:
         if self._is_create_skill_query(user_input):
             return self._handle_create_skill(user_input, history)
 
-        # ========== 执行技能 ==========
-        skill_result = self._execute_matching_skill(user_input)
-        if skill_result:
-            return skill_result
+        # ========== 技能匹配与执行 ==========
+        result = self._match_and_execute_skill(user_input, history)
+        if result:
+            return result
 
         # ========== 云端聊天 ==========
         return self._chat_with_cloud(user_input, history)
+
+    # ================================================================
+    # 技能匹配与执行（核心）
+    # ================================================================
+
+    def _match_and_execute_skill(self, user_input: str, history: list) -> str:
+        """
+        通过匹配器匹配技能，自动执行或创建
+        """
+        match_result = self.matcher.match(user_input)
+        
+        if not match_result.get("matched"):
+            return None
+        
+        skill_name = match_result.get("skill")
+        keyword = match_result.get("keyword")
+        description = match_result.get("description", "")
+        need_create = match_result.get("need_create", False)
+        
+        # 如果匹配到了技能名
+        if skill_name:
+            # 检查技能是否存在
+            if self.skills.skill_exists(skill_name):
+                logger.info(f"[Agent] 执行技能: {skill_name}")
+                return self._execute_skill(skill_name)
+            else:
+                # 技能不存在，自动创建
+                logger.info(f"[Agent] 技能 {skill_name} 不存在，自动创建")
+                return self._auto_create_and_execute(skill_name, description, history)
+        
+        # 如果是"打开XXX"模式，需要查找或创建
+        if need_create and keyword:
+            # 尝试在已有技能中查找
+            found = self._find_skill_by_keyword(keyword)
+            if found:
+                return self._execute_skill(found)
+            
+            # 检查是否允许自动创建
+            if self.matcher.auto_create:
+                return self._auto_create_and_execute(None, description, history)
+            else:
+                return f"💡 没有找到 **{keyword}** 对应的技能。\n\n你可以说 **新增技能：{description}** 来手动添加。😊"
+        
+        return None
+
+    def _find_skill_by_keyword(self, keyword: str) -> str:
+        """根据关键词查找技能"""
+        keyword_lower = keyword.lower()
+        for skill_name in self.skills.skills.keys():
+            if keyword_lower in skill_name.lower():
+                return skill_name
+        for skill_name, info in self.skills.skills.items():
+            desc = info.get("description", "").lower()
+            if keyword_lower in desc or keyword in desc:
+                return skill_name
+        return None
+
+    def _auto_create_and_execute(self, skill_name: str, description: str, history: list) -> str:
+        """自动创建技能并执行"""
+        if not skill_name:
+            skill_name = self._to_filename(description) or "new_skill"
+        
+        # 生成技能代码
+        skill_code, generated_name, skill_desc = self._generate_skill_via_api(description, history)
+        
+        if not skill_code:
+            return f"❌ 无法自动创建技能：{description}"
+
+        # 保存技能
+        skills_dir = "skills"
+        if not os.path.exists(skills_dir):
+            os.makedirs(skills_dir)
+
+        filename = f"{generated_name}.py"
+        filepath = os.path.join(skills_dir, filename)
+
+        try:
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write(skill_code)
+
+            self.skills.reload_skills()
+            self.cloud.set_skills_info(self.skills.get_skills_info())
+            self._update_memory_context()
+
+            logger.info(f"[Agent] 自动创建技能成功: {filename}")
+            
+            # 添加到匹配规则
+            self.matcher.add_mapping(description.replace("打开 ", ""), generated_name, skill_desc)
+            
+            # 执行技能
+            return self._execute_skill(generated_name)
+            
+        except Exception as e:
+            logger.error(f"[Agent] 自动创建技能失败: {e}")
+            return f"❌ 自动创建技能失败：{str(e)}"
 
     # ================================================================
     # 记忆管理
@@ -153,7 +250,7 @@ class AgentLoop:
         all_memories = self.permanent_memory.get_all_memories()
         lines = ["📚 **我的永久记忆**\n"]
         has_memory = False
-
+        
         user_info = all_memories.get("user_info", {})
         if user_info:
             has_memory = True
@@ -161,7 +258,7 @@ class AgentLoop:
             for key, value in user_info.items():
                 lines.append(f"  • {key}：{value}")
             lines.append("")
-
+        
         preferences = all_memories.get("preferences", {})
         if preferences:
             has_memory = True
@@ -169,7 +266,7 @@ class AgentLoop:
             for key, value in preferences.items():
                 lines.append(f"  • {key}：{value}")
             lines.append("")
-
+        
         facts = all_memories.get("important_facts", [])
         if facts:
             has_memory = True
@@ -177,14 +274,14 @@ class AgentLoop:
             for i, fact in enumerate(facts, 1):
                 lines.append(f"  {i}. {fact}")
             lines.append("")
-
+        
         if not has_memory:
             lines.append("目前还没有任何永久记忆。")
             lines.append("\n你可以告诉我：")
             lines.append("  • 你的名字：'我叫小明'")
             lines.append("  • 你的偏好：'我喜欢蓝色'")
             lines.append("  • 重要事情：'记住我每天7点起床'")
-
+        
         return "\n".join(lines)
 
     def _is_who_am_i_query(self, user_input: str) -> bool:
@@ -206,29 +303,29 @@ class AgentLoop:
             r'称呼我\s*([^\s，,。.！!？?]+)',
             r'给你取名\s*([^\s，,。.！!？?]+)',
         ]
-
+        
         question_words = ['谁', '什么', '哪', '怎么', '为什么', '多少']
-
+        
         for pattern in patterns:
             match = re.search(pattern, user_input)
             if match:
                 new_name = match.group(1).strip()
                 new_name = re.sub(r'[，,。.！!？?、；;：:]', '', new_name)
-
+                
                 if new_name in question_words:
                     continue
                 if not new_name or len(new_name) > 20:
                     return "昵称不能为空，且最多20个字哦！"
                 if re.search(r'[<>"\'/\\]', new_name):
                     return "昵称包含非法字符。"
-
+                
                 self.agent_name = new_name
                 self.cloud.set_agent_name(new_name)
                 self.permanent_memory.set_user_name(new_name)
                 self._sync_context_from_memory()
-
+                
                 return f"好的！以后我就叫 **{new_name}** 啦！😊"
-
+        
         return None
 
     # ================================================================
@@ -245,7 +342,10 @@ class AgentLoop:
     def _handle_delete_skill(self, user_input: str) -> str:
         match = re.search(r'删除\s*技能\s*(\w+)', user_input)
         if match:
-            return self.skills.delete_skill(match.group(1))
+            skill_name = match.group(1)
+            # 同时删除匹配规则
+            self.matcher.remove_mapping(skill_name)
+            return self.skills.delete_skill(skill_name)
         return "请指定要删除的技能名称，例如：'删除技能 calculator'"
 
     def _is_create_skill_query(self, user_input: str) -> bool:
@@ -257,12 +357,12 @@ class AgentLoop:
         match = re.search(r'(?:新增|增加|创建|添加|生成)\s*技能[:：]?\s*(.+?)(?:[。.！!？?]|$)', user_input)
         if match:
             description = match.group(1).strip()
-
+        
         skill_code, skill_name, skill_desc = self._generate_skill_via_api(description, history)
-
+        
         if not skill_code:
             return "❌ 生成技能失败，请提供更详细的功能描述。😊"
-
+        
         skills_dir = "skills"
         if not os.path.exists(skills_dir):
             os.makedirs(skills_dir)
@@ -283,6 +383,10 @@ class AgentLoop:
             self.skills.reload_skills()
             self.cloud.set_skills_info(self.skills.get_skills_info())
             self._update_memory_context()
+            
+            # 添加到匹配规则
+            keyword = description.replace("打开 ", "").replace("创建 ", "")
+            self.matcher.add_mapping(keyword, skill_name, skill_desc)
 
             return f"✅ **技能创建成功！** 🎉\n\n已创建：`{filename}`\n功能：{skill_desc}\n\n现在可以直接使用了！😊"
         except Exception as e:
@@ -340,40 +444,6 @@ class AgentLoop:
             logger.error(f"[Agent] API生成技能失败: {e}")
             return None, None, None
 
-    def _execute_matching_skill(self, user_input: str) -> str:
-        """
-        匹配并执行技能
-        支持：打开计算器、截个图、运行xxx
-        """
-        user_input_clean = user_input.strip()
-
-        # ========== 直接关键词匹配 ==========
-        # 截图相关
-        if any(k in user_input_clean for k in ["截个图", "截图", "屏幕截图", "截屏"]):
-            for skill_name in self.skills.skills.keys():
-                if "screenshot" in skill_name.lower() or "截图" in skill_name:
-                    return self._execute_skill(skill_name)
-            return "我还没有截图技能哦！你可以说 **新增技能：截图** 来添加这个功能。📸"
-
-        # 计算器相关
-        if any(k in user_input_clean for k in ["打开计算器", "计算器"]):
-            for skill_name in self.skills.skills.keys():
-                if "calculator" in skill_name.lower() or "计算器" in skill_name:
-                    return self._execute_skill(skill_name)
-
-        # ========== 通用匹配：打开XXX ==========
-        match = re.match(r'^(?:打开|运行|启动|执行|使用)\s*([^\s，,。.！!？?]+)', user_input_clean)
-        if match:
-            keyword = match.group(1)
-            for skill_name, info in self.skills.skills.items():
-                desc = info.get("description", "").lower()
-                if keyword.lower() in skill_name.lower() or keyword in desc:
-                    return self._execute_skill(skill_name)
-            # 没找到匹配的技能，返回None让云端处理
-            return None
-
-        return None
-
     def _execute_skill(self, skill_name: str) -> str:
         try:
             result = self.skills.execute(skill_name, {})
@@ -403,10 +473,10 @@ class AgentLoop:
         """使用云端 LLM 聊天"""
         try:
             memory_context = self.memory_integration.get_memory_context()
-
+            
             skills_info = self.skills.get_skills_info()
             skills_desc = "\n".join([f"  • {name}: {info['description']}" for name, info in skills_info.items()]) if skills_info else "暂无"
-
+            
             system_prompt = f"""你是智能助手 **{self.agent_name}**。
 
 【关于用户的信息】
@@ -423,8 +493,8 @@ class AgentLoop:
 【重要规则】
 1. 用自然、友好、热情的语气回答
 2. 如果用户问"现在几点"或"几点了"，直接告诉当前时间
-3. 如果用户说"截个图"或"截图"，检查技能列表是否有截图技能，如果有则告诉用户可以使用
-4. 如果用户说"打开XXX"，检查技能列表是否有对应技能
+3. 如果用户说"截个图"或"截图"，直接执行截图技能
+4. 如果用户说"打开XXX"，直接执行对应技能
 5. 如果用户说"你好"或"hi"，热情回应
 6. 直接输出自然语言，不要输出JSON格式
 
@@ -435,18 +505,18 @@ class AgentLoop:
                 *history[-10:],
                 {"role": "user", "content": user_input}
             ]
-
+            
             result = self.cloud.chat(messages)
-
+            
             if isinstance(result, dict):
                 answer = result.get("answer", "")
                 if answer and len(answer) > 1:
                     return answer
             if isinstance(result, str) and len(result) > 2:
                 return result
-
+            
             return "抱歉，我没有理解你的意思。你可以试试：\n- 记住什么：'记住我喜欢吃西瓜'\n- 查看记忆：'查看记忆'\n- 创建技能：'新增技能：打开浏览器'"
-
+            
         except Exception as e:
             logger.error(f"[Agent] 云端聊天失败: {e}")
             return f"抱歉，我暂时无法回答。你可以换个方式问我。😊"
