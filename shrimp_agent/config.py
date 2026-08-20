@@ -1,5 +1,10 @@
 import os
-from pydantic_settings import BaseSettings
+
+try:
+    from pydantic_settings import BaseSettings
+except ImportError:  # pragma: no cover - compatibility for minimal local envs
+    from pydantic import BaseSettings
+
 from dotenv import load_dotenv
 
 load_dotenv()

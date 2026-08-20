@@ -1,6 +1,6 @@
 """
 GGB小虾米 核心 Agent
-纯核心：记忆管理 + 聊天能力 + 技能管理
+核心职责：记忆管理 + 技能管理 + 聊天分发
 """
 
 from core.skill_manager import SkillManager
@@ -8,7 +8,6 @@ from core.skill_matcher import SkillMatcher
 from memory.compressed_memory import CompressedMemory
 from core.memory_integration import MemoryIntegration
 from utils.logger import logger
-from config import settings
 from llm.cloud_engine import CloudEngine
 import os
 import re
@@ -18,13 +17,13 @@ import datetime
 class AgentLoop:
     def __init__(self):
         self.skills = SkillManager()
-        self.matcher = SkillMatcher()  # 新增匹配器
+        self.matcher = SkillMatcher()
         self.memory = CompressedMemory()
         self.memory_integration = MemoryIntegration()
         self.permanent_memory = self.memory_integration.permanent
         self.cloud = CloudEngine()
         self.agent_name = "GGB小虾米"
-        
+
         saved_name = self.permanent_memory.get_user_name()
         if saved_name:
             self.agent_name = saved_name
@@ -33,21 +32,23 @@ class AgentLoop:
         self.cloud.set_skills_info(self.skills.get_skills_info())
         self.cloud.set_agent_name(self.agent_name)
         self._update_memory_context()
-    
+
     def _update_memory_context(self):
         memory_context = self.memory_integration.get_memory_context()
         if memory_context:
             self.cloud.set_memory_context(memory_context)
-    
+
     def _sync_context_from_memory(self):
         saved_name = self.permanent_memory.get_user_name()
-        if saved_name:
-            self.agent_name = saved_name
-            self.cloud.set_agent_name(saved_name)
-        else:
-            self.agent_name = "GGB小虾米"
-            self.cloud.set_agent_name("GGB小虾米")
+        self.agent_name = saved_name or "GGB小虾米"
+        self.cloud.set_agent_name(self.agent_name)
         self._update_memory_context()
+
+    def _set_agent_name(self, new_name: str):
+        self.agent_name = new_name
+        self.cloud.set_agent_name(new_name)
+        self.permanent_memory.set_user_name(new_name)
+        self._sync_context_from_memory()
 
     def run(self, user_input: str, history: list = None) -> str:
         if history is None:
@@ -55,15 +56,9 @@ class AgentLoop:
 
         logger.info(f"[Agent] 处理: {user_input[:50]}...")
 
-        # ========== 记忆管理 ==========
-        if self._is_forget_memory_query(user_input):
-            return self._handle_forget_memory(user_input)
-
-        if self._is_show_memory_query(user_input):
-            return self._show_memories()
-
-        if self._is_who_am_i_query(user_input):
-            return self._handle_who_am_i()
+        for predicate, handler in self._memory_handlers(user_input):
+            if predicate(user_input):
+                return handler()
 
         memory_extract = self.memory_integration.process_user_input(user_input)
         if memory_extract.get("memorized"):
@@ -75,118 +70,80 @@ class AgentLoop:
             self._sync_context_from_memory()
             return name_result
 
-        # ========== 技能管理 ==========
-        if self._is_list_skills_query(user_input):
-            return self.skills.list_skills_formatted()
+        for predicate, handler in self._skill_handlers(user_input, history):
+            if predicate(user_input):
+                return handler()
 
-        if self._is_delete_skill_query(user_input):
-            return self._handle_delete_skill(user_input)
-
-        if self._is_create_skill_query(user_input):
-            return self._handle_create_skill(user_input, history)
-
-        # ========== 技能匹配与执行 ==========
         result = self._match_and_execute_skill(user_input, history)
         if result:
             return result
 
-        # ========== 云端聊天 ==========
         return self._chat_with_cloud(user_input, history)
+
+    def _memory_handlers(self, user_input: str):
+        return [
+            (self._is_forget_memory_query, lambda: self._handle_forget_memory(user_input)),
+            (self._is_show_memory_query, lambda: self._show_memories()),
+            (self._is_who_am_i_query, lambda: self._handle_who_am_i()),
+        ]
+
+    def _skill_handlers(self, user_input: str, history: list):
+        return [
+            (self._is_list_skills_query, lambda: self.skills.list_skills_formatted()),
+            (self._is_delete_skill_query, lambda: self._handle_delete_skill(user_input)),
+            (self._is_create_skill_query, lambda: self._handle_create_skill(user_input, history)),
+        ]
 
     # ================================================================
     # 技能匹配与执行（核心）
     # ================================================================
 
     def _match_and_execute_skill(self, user_input: str, history: list) -> str:
-        """
-        通过匹配器匹配技能，自动执行或创建
-        """
-        match_result = self.matcher.match(user_input)
-        
-        if not match_result.get("matched"):
+        """按规则精准匹配技能，避免不必要的模糊调用。"""
+        user_input_clean = user_input.strip()
+        logger.info(f"[SkillMatch] Raw input: '{user_input_clean}'")
+
+        if any(word in user_input_clean for word in ["吗", "？", "?", "能不能", "可以", "怎么", "如何", "是否", "什么"]):
+            logger.info("[SkillMatch] Question detected, skipping skill execution.")
             return None
-        
-        skill_name = match_result.get("skill")
-        keyword = match_result.get("keyword")
-        description = match_result.get("description", "")
-        need_create = match_result.get("need_create", False)
-        
-        # 如果匹配到了技能名
-        if skill_name:
-            # 检查技能是否存在
-            if self.skills.skill_exists(skill_name):
-                logger.info(f"[Agent] 执行技能: {skill_name}")
-                return self._execute_skill(skill_name)
-            else:
-                # 技能不存在，自动创建
-                logger.info(f"[Agent] 技能 {skill_name} 不存在，自动创建")
-                return self._auto_create_and_execute(skill_name, description, history)
-        
-        # 如果是"打开XXX"模式，需要查找或创建
-        if need_create and keyword:
-            # 尝试在已有技能中查找
-            found = self._find_skill_by_keyword(keyword)
-            if found:
-                return self._execute_skill(found)
-            
-            # 检查是否允许自动创建
-            if self.matcher.auto_create:
-                return self._auto_create_and_execute(None, description, history)
-            else:
-                return f"💡 没有找到 **{keyword}** 对应的技能。\n\n你可以说 **新增技能：{description}** 来手动添加。😊"
-        
-        return None
 
-    def _find_skill_by_keyword(self, keyword: str) -> str:
-        """根据关键词查找技能"""
-        keyword_lower = keyword.lower()
-        for skill_name in self.skills.skills.keys():
-            if keyword_lower in skill_name.lower():
-                return skill_name
+        screenshot_skill = self._find_screenshot_skill()
+        if screenshot_skill and any(keyword in user_input_clean for keyword in ["截个图", "截图", "屏幕截图", "截屏"]):
+            logger.info(f"[SkillMatch] Screenshot keyword detected, executing: {screenshot_skill}")
+            return self._execute_skill(screenshot_skill)
+        if any(keyword in user_input_clean for keyword in ["截个图", "截图", "屏幕截图", "截屏"]):
+            logger.info("[SkillMatch] No screenshot skill found, returning guidance.")
+            return "我还没有截图技能哦！你可以说 **新增技能：截图** 来添加这个功能。📸"
+
+        action_match = re.match(r'^(?:打开|运行|启动|执行|使用)\s*(.+)$', user_input_clean)
+        if not action_match:
+            logger.info("[SkillMatch] No action word at start, skipping skill execution.")
+            return None
+
+        target = action_match.group(1).strip()
+        logger.info(f"[SkillMatch] Extracted target: '{target}'")
+
         for skill_name, info in self.skills.skills.items():
-            desc = info.get("description", "").lower()
-            if keyword_lower in desc or keyword in desc:
+            if self._skill_target_matches(target, skill_name, info):
+                return self._execute_skill(skill_name)
+
+        logger.info(f"[SkillMatch] No exact match for target '{target}', passing to cloud.")
+        return None
+
+    def _find_screenshot_skill(self):
+        for skill_name in self.skills.skills.keys():
+            if "screenshot" in skill_name.lower() or "截图" in skill_name:
                 return skill_name
         return None
 
-    def _auto_create_and_execute(self, skill_name: str, description: str, history: list) -> str:
-        """自动创建技能并执行"""
-        if not skill_name:
-            skill_name = self._to_filename(description) or "new_skill"
-        
-        # 生成技能代码
-        skill_code, generated_name, skill_desc = self._generate_skill_via_api(description, history)
-        
-        if not skill_code:
-            return f"❌ 无法自动创建技能：{description}"
+    def _skill_target_matches(self, target: str, skill_name: str, info: dict) -> bool:
+        normalized_target = target.lower()
+        if normalized_target == skill_name.lower():
+            return True
 
-        # 保存技能
-        skills_dir = "skills"
-        if not os.path.exists(skills_dir):
-            os.makedirs(skills_dir)
-
-        filename = f"{generated_name}.py"
-        filepath = os.path.join(skills_dir, filename)
-
-        try:
-            with open(filepath, "w", encoding="utf-8") as f:
-                f.write(skill_code)
-
-            self.skills.reload_skills()
-            self.cloud.set_skills_info(self.skills.get_skills_info())
-            self._update_memory_context()
-
-            logger.info(f"[Agent] 自动创建技能成功: {filename}")
-            
-            # 添加到匹配规则
-            self.matcher.add_mapping(description.replace("打开 ", ""), generated_name, skill_desc)
-            
-            # 执行技能
-            return self._execute_skill(generated_name)
-            
-        except Exception as e:
-            logger.error(f"[Agent] 自动创建技能失败: {e}")
-            return f"❌ 自动创建技能失败：{str(e)}"
+        desc = info.get("description", "")
+        normalized_desc = desc.replace("打开", "").replace("系统", "").replace("应用", "").strip().lower()
+        return normalized_target in {desc.lower(), normalized_desc}
 
     # ================================================================
     # 记忆管理

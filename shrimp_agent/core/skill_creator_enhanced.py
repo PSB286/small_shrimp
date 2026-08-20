@@ -82,7 +82,7 @@ class EnhancedSkillCreator:
 技能名称: {skill_name}
 功能描述: {description}
 参数: {params_doc}
-
+                
 要求：
 1. 函数名使用 {skill_name}
 2. 包含完整的文档字符串
@@ -90,7 +90,7 @@ class EnhancedSkillCreator:
 4. 包含 __skill_meta__ 元数据
 5. 只输出代码，不要解释
 """
-                response = self.cloud.chat(prompt, [])
+response = self.cloud.chat(prompt)
                 if isinstance(response, str):
                     code = response.strip()
                     # 提取代码块
@@ -110,8 +110,9 @@ class EnhancedSkillCreator:
     def _generate_from_template(self, skill_name: str, description: str, params: dict) -> str:
         """从模板生成"""
         params_list = ", ".join(params.keys()) if params else ""
+        params_doc = ", ".join([f"{k}: {v}" for k, v in params.items()]) if params else "无参数"
         meta_params = {k: "any" for k in params.keys()}
-        
+
         return f'''
 def {skill_name}({params_list}):
     """

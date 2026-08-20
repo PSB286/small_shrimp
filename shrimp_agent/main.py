@@ -186,10 +186,7 @@ async def set_agent_name(request: Request):
             return JSONResponse({"error": "名称包含非法字符，请使用中文、英文或数字"}, status_code=400)
 
         old_name = agent.agent_name
-        agent.agent_name = new_name
-        agent.cloud.set_agent_name(new_name)
-        agent.context["agent_name"] = new_name
-        agent.permanent_memory.set_user_name(new_name)
+        agent._set_agent_name(new_name)
         memory.add_system_message(f"助手名称已从 '{old_name}' 改为 '{new_name}'")
 
         logger.info(f"[API] 名称已更改: {old_name} → {new_name}")
@@ -212,10 +209,7 @@ async def reset_agent_name():
         old_name = agent.agent_name
         default_name = "GGB小虾米"
 
-        agent.agent_name = default_name
-        agent.cloud.set_agent_name(default_name)
-        agent.context["agent_name"] = default_name
-        agent.permanent_memory.set_user_name(default_name)
+        agent._set_agent_name(default_name)
         memory.add_system_message(f"助手名称已重置: '{old_name}' → '{default_name}'")
 
         logger.info(f"[API] 名称已重置: {old_name} → {default_name}")
