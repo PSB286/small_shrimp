@@ -103,3 +103,40 @@ python tests/integration_minimal.py         # 端到端：Windows 最简状态�
 
 - `.env` 已被 .gitignore 排除，密钥不要提交；`.env.example` 是模板
 - 用户数据（记忆/能力清单/审计）默认不入版本库
+
+## 十、部署到手机（Termux · 安卓）
+
+小虾米可以在**安卓手机本地直接运行**（Termux 终端），不依赖电脑。
+
+### 步骤
+
+```bash
+# 1. 安装 Termux（建议从 F-Droid 安装，Play 版已停更）
+#    下载地址: https://f-droid.org/packages/com.termux/
+
+# 2. 把整个 shrimp_agent 文件夹放到手机里
+#    - 方法A：USB 连接电脑复制，或文件管理器传到 Download 目录
+#    - 方法B：先推到 Git 远程仓库，再在 Termux 里 git clone
+
+# 3. 在 Termux 里执行（先授权存储再进入目录）
+termux-setup-storage
+cd /sdcard/Download/shrimp_agent   # 换成你放文件的路径
+bash setup_termux.sh               # 一键安装：Python + 依赖 + .env
+
+# 4. 配置 API Key
+nano .env                           # 填入 API_KEY，Ctrl+O 保存，Ctrl+X 退出
+
+# 5. 启动
+python main.py
+
+# 6. 手机浏览器打开
+#    http://localhost:8000
+```
+
+### 提示
+
+- **局域网访问**：手机和电脑同一 WiFi 时，电脑浏览器访问 `http://手机IP:8000`
+- **后台运行**：`python main.py &` 或安装 Termux:Boot 实现开机自启
+- **依赖全纯 Python**：无编译（已去掉 pydantic 重依赖），安装快、兼容 arm64
+- 手机环境的硬件探测（舵机/屏幕等）会自动失败降级，技能照常工作；
+  桌面类技能（记事本/计算器）在手机上可能不可用，可用「删除技能」清理

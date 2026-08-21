@@ -1,0 +1,6 @@
+# Termux（安卓手机）专用依赖：全部纯 Python，无编译依赖
+# 用法：pip install -r requirements-termux.txt
+fastapi>=0.104.0
+uvicorn>=0.24.0
+requests>=2.31.0
+python-dotenv>=1.0.0

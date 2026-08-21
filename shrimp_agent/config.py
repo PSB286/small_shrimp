@@ -1,10 +1,12 @@
+"""
+配置模块 - 纯 Python 实现（不依赖 pydantic，便于轻量环境/手机 Termux 部署）
+
+所有配置从环境变量读取（.env 由 python-dotenv 加载），
+没有 pydantic 也能跑，安装更轻、无编译依赖。
+"""
+
 import os
 import sys
-
-try:
-    from pydantic_settings import BaseSettings
-except ImportError:  # pragma: no cover - compatibility for minimal local envs
-    from pydantic import BaseSettings
 
 from dotenv import load_dotenv
 
@@ -15,9 +17,9 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
-# 优先加载项目根目录下的 .env
+# 优先加载项目根目录下的 .env，再兼容当前工作目录
 load_dotenv(os.path.join(BASE_DIR, ".env"))
-load_dotenv()  # 兼容旧习惯：也从当前工作目录加载
+load_dotenv()
 
 
 def _abs(path: str) -> str:
@@ -27,34 +29,41 @@ def _abs(path: str) -> str:
     return os.path.join(BASE_DIR, path)
 
 
-class Settings(BaseSettings):
-    api_key: str = os.getenv("API_KEY", "sk-xxx")
-    api_url: str = "https://api.deepseek.com/v1/chat/completions"
-    max_steps: int = 50
-    max_retries: int = 3
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        return default
 
-    # ---- 路径（全部自动解析为绝对路径） ----
-    base_dir: str = BASE_DIR
-    memory_file: str = _abs("memory/permanent_memory.json")
-    error_log_file: str = _abs("data/error_log.json")
-    skills_dir: str = _abs("skills")
-    templates_dir: str = _abs("templates")
-    updates_dir: str = _abs("updates")
-    logs_dir: str = _abs("logs")
-    capabilities_file: str = _abs("data/capabilities.json")
-    environment_manifest: str = _abs("environment.json")
 
-    # ---- 环境自适应相关配置 ----
-    hardware_mode: str = os.getenv("HARDWARE_MODE", "auto")  # auto | sim | real
-    max_optimize_per_day: int = int(os.getenv("MAX_OPTIMIZE_PER_DAY", "10"))
-    max_generate_rounds: int = int(os.getenv("MAX_GENERATE_ROUNDS", "3"))
-    auto_bootstrap: bool = True          # 启动时按能力清单自动生成基础技能
-    auto_create_skill: bool = True       # 学习器发现重复需求时自动创建技能
+class Settings:
+    """轻量配置：全部从环境变量读取"""
 
-    debug: bool = False
+    def __init__(self):
+        self.api_key: str = os.getenv("API_KEY", "sk-xxx")
+        self.api_url: str = os.getenv("API_URL", "https://api.deepseek.com/v1/chat/completions")
+        self.max_steps: int = _env_int("MAX_STEPS", 50)
+        self.max_retries: int = _env_int("MAX_RETRIES", 3)
 
-    class Config:
-        env_file = ".env"
+        # ---- 路径（全部自动解析为绝对路径） ----
+        self.base_dir: str = BASE_DIR
+        self.memory_file: str = _abs("memory/permanent_memory.json")
+        self.error_log_file: str = _abs("data/error_log.json")
+        self.skills_dir: str = _abs("skills")
+        self.templates_dir: str = _abs("templates")
+        self.updates_dir: str = _abs("updates")
+        self.logs_dir: str = _abs("logs")
+        self.capabilities_file: str = _abs("data/capabilities.json")
+        self.environment_manifest: str = _abs("environment.json")
+
+        # ---- 环境自适应相关配置 ----
+        self.hardware_mode: str = os.getenv("HARDWARE_MODE", "auto")  # auto | sim | real
+        self.max_optimize_per_day: int = _env_int("MAX_OPTIMIZE_PER_DAY", 10)
+        self.max_generate_rounds: int = _env_int("MAX_GENERATE_ROUNDS", 3)
+        self.auto_bootstrap: bool = os.getenv("AUTO_BOOTSTRAP", "1") == "1"
+        self.auto_create_skill: bool = os.getenv("AUTO_CREATE_SKILL", "1") == "1"
+
+        self.debug: bool = os.getenv("DEBUG", "0") == "1"
 
 
 settings = Settings()

@@ -109,6 +109,13 @@
       ],
       "skill": "compare_prices",
       "description": "比价助手：搜索并对比淘宝、闲鱼、京东等平台的价格，帮助用户发现差价空间"
+    },
+    {
+      "keywords": [
+        "Notepad++ 操作"
+      ],
+      "skill": "notepadpp_operation",
+      "description": "操作 Notepad++：打开文件、新建文件、打开指定路径文件等"
     }
   ],
   "auto_create": true,
