@@ -105,6 +105,7 @@ class AgentLoop:
             (self._is_delete_skill_query, lambda: self._handle_delete_skill(user_input)),
             (self._is_create_skill_query, lambda: self._handle_create_skill(user_input, history)),
             (self._is_fix_skill_query, lambda: self._handle_fix_skill(user_input)),
+            (self._is_enhance_skill_query, lambda: self._handle_enhance_skill(user_input)),
         ]
 
     # ================================================================
@@ -382,12 +383,14 @@ class AgentLoop:
                     self.permanent_memory.add_fact(
                         f"把「{skill_desc}」整合进了已有技能 {existing_name}（现为：{merged_desc}）", "skills"
                     )
+                    suggestions = self._skill_upgrade_suggestions(existing_name, merged_code, merged_desc)
                     return (
                         f"🧩 **已整合相似技能！**\n\n"
                         f"新需求「{skill_desc}」与已有技能 `{existing_name}` 功能重叠，"
                         f"我没有创建重复技能，而是把它合并进了 `{existing_name}`：\n"
                         f"  📦 {existing_name}：{merged_desc}\n\n"
                         f"现在可以说「{description}」直接使用（旧版已备份到 .backups）。"
+                        f"{suggestions}"
                     )
                 # 合并失败 → 退回创建新技能
                 logger.warning("[Agent] 技能 %s 合并失败，创建独立技能", skill_name)
@@ -423,9 +426,96 @@ class AgentLoop:
             # 记入永久记忆：学会的新技能
             self.permanent_memory.add_fact(f"学会了技能 {skill_name}：{skill_desc}", "skills")
 
-            return f"✅ **技能创建成功！** 🎉\n\n已创建：`{filename}`\n功能：{skill_desc}\n生成方式：{msgs[0] if msgs else ''}\n\n现在可以直接使用了！😊"
+            suggestions = self._skill_upgrade_suggestions(skill_name, skill_code, skill_desc)
+
+            return f"✅ **技能创建成功！** 🎉\n\n已创建：`{filename}`\n功能：{skill_desc}\n生成方式：{msgs[0] if msgs else ''}\n\n现在可以直接使用了！😊{suggestions}"
         except Exception as e:
             return f"❌ 创建技能失败：{str(e)}"
+
+    def _skill_upgrade_suggestions(self, skill_name, skill_code, skill_desc):
+        """技能生成后，主动推荐还需要补充的能力（避免用户一点点提）"""
+        from core.skill_factory import suggest_skill_upgrades
+        suggestions = suggest_skill_upgrades(skill_name, skill_desc, skill_code, self.capabilities)
+        if not suggestions:
+            return ""
+        lines = ["", "", "💡 **技能还能更强大（能力推荐）：**"]
+        for s in suggestions:
+            title = s.get("title", "")
+            detail = s.get("detail", "")
+            lines.append(f"• {title}" + (f" —— {detail}" if detail else ""))
+        lines.append(f"直接说「增强技能 {skill_name}：要加的能力」一次补齐，不用一点点提。")
+        try:
+            self.permanent_memory.add_custom_memory(
+                f"{skill_name} 增强建议：{'；'.join(s.get('title', '') for s in suggestions)}",
+                tags=[skill_name, "upgrade"],
+            )
+        except Exception:
+            pass
+        return "\n".join(lines)
+
+    def _is_enhance_skill_query(self, user_input: str) -> bool:
+        return re.search(r'(?:增强|升级|扩展|完善)\s*技能\s*(\w+)', user_input) is not None
+
+    def _handle_enhance_skill(self, user_input: str) -> str:
+        """
+        按指令一次性增强技能（保留原功能 + 新增能力）。
+        '增强技能 X：追加写入同一个记事本'
+        """
+        match = re.search(r'(?:增强|升级|扩展|完善)\s*技能\s*(\w+)(?:[:：]\s*(.*))?', user_input)
+        if not match:
+            return "请指定要增强的技能名称，例如：'增强技能 open_notepad：追加写入同一个记事本'"
+        skill_name = match.group(1)
+        instructions = (match.group(2) or "").strip()
+
+        if not self.skills.skill_exists(skill_name):
+            return f"⚠️ 技能 {skill_name} 不存在"
+        existing_code = self.skills.get_skill_code(skill_name)
+        if not existing_code:
+            return f"⚠️ 无法读取技能 {skill_name} 的源码"
+        desc = self.skills.get_skills_info().get(skill_name, {}).get("description", "")
+
+        from core.skill_factory import enhance_skill, suggest_skill_upgrades
+        if not instructions:
+            # 没给具体指令 → 用之前推荐的能力（存过 custom memory 就优先取）
+            suggestions = []
+            for mem in self.permanent_memory.get_all_custom_memories_with_metadata():
+                if skill_name in mem.get("tags", []):
+                    content = mem.get("content", "")
+                    if "增强建议" in content:
+                        suggestions = [{"title": t.strip()} for t in content.split("：")[1].split("；") if t.strip()]
+                        break
+            if not suggestions:
+                suggestions = suggest_skill_upgrades(skill_name, desc, existing_code, self.capabilities)
+            if not suggestions:
+                return f"请具体说明要增强什么，例如：'增强技能 {skill_name}：追加写入同一个记事本'"
+            instructions = "；".join(f"{s.get('title', '')}（{s.get('detail', '')}）" for s in suggestions[:3])
+
+        result = enhance_skill(skill_name, existing_code, instructions, self.capabilities)
+        if not result:
+            return f"❌ 增强失败：AI 未能产出可用的增强代码，请换个说法再试。"
+        new_code, new_desc = result
+
+        # 备份 → 写入 → 热重载
+        backup_dir = os.path.join(self.skills.skills_dir, ".backups")
+        os.makedirs(backup_dir, exist_ok=True)
+        import shutil as _shutil
+        _shutil.copy2(
+            os.path.join(self.skills.skills_dir, f"{skill_name}.py"),
+            os.path.join(backup_dir, f"{skill_name}_preenhance.py"),
+        )
+        with open(os.path.join(self.skills.skills_dir, f"{skill_name}.py"), "w", encoding="utf-8") as f:
+            f.write(new_code)
+        self.skills.reload_skills()
+        self.cloud.set_skills_info(self.skills.get_skills_info())
+        self._update_memory_context()
+        self.permanent_memory.add_fact(f"增强了技能 {skill_name}：{instructions}", "skills")
+
+        return (
+            f"✅ **技能已增强！**\n\n"
+            f"📦 {skill_name}：{new_desc}\n"
+            f"新增能力：{instructions}\n\n"
+            f"旧版已备份到 .backups，随时可说「修复技能 {skill_name}」回退。"
+        )
 
     def _is_fix_skill_query(self, user_input: str) -> bool:
         return re.search(r'(?:修复|优化|改进|升级|修理)\s*技能\s*(\w+)', user_input) is not None

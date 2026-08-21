@@ -67,6 +67,13 @@
       ],
       "skill": "write_to_notepad",
       "description": "打开记事本并写入指定文字"
+    },
+    {
+      "keywords": [
+        "显示系统当前日期"
+      ],
+      "skill": "show_current_date",
+      "description": "显示系统当前日期，并在记事本中展示"
     }
   ],
   "auto_create": true,

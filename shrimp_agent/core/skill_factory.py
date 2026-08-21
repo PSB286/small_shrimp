@@ -245,6 +245,102 @@ def merge_skills(existing_name, existing_code, new_desc, new_code, capabilities)
         return None
 
 
+# ==================== 技能能力推荐与增强 ====================
+
+def suggest_skill_upgrades(skill_name, description, code, capabilities):
+    """
+    LLM 分析技能，推荐还可以补充哪些能力（参数/功能/边界情况）。
+    返回 [{"title": str, "detail": str}]（最多5条）；LLM 不可用时返回 []。
+    """
+    if not _llm_available():
+        return []
+    caps_json = json.dumps(capabilities, ensure_ascii=False, indent=2)
+    system = (
+        "你是小虾米的技能评估器。分析一个技能，推荐它还可以补充哪些能力，"
+        "让技能更完整、更好用（如额外的参数、常见场景、边界情况）。\n\n"
+        "【环境能力清单】\n%s\n\n"
+        "只输出 JSON 数组，不要任何其他内容：\n"
+        '[{"title": "简短标题", "detail": "一句话说明"}]，最多5条' % caps_json
+    )
+    user = "技能名：%s\n描述：%s\n代码：\n%s" % (skill_name, description, code)
+    try:
+        cloud = CloudEngine()
+        result = cloud.chat([
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ])
+        text = ""
+        if isinstance(result, dict):
+            text = result.get("answer", "")
+        elif isinstance(result, str):
+            text = result
+        m = re.search(r'\[.*\]', text, re.DOTALL)
+        if not m:
+            return []
+        data = json.loads(m.group(0))
+        if not isinstance(data, list):
+            return []
+        return [
+            {"title": str(x.get("title", "")), "detail": str(x.get("detail", ""))}
+            for x in data[:5] if isinstance(x, dict) and x.get("title")
+        ]
+    except Exception as e:
+        logger.warning("[Factory] 能力推荐失败: %s", e)
+        return []
+
+
+def enhance_skill(existing_name, existing_code, instructions, capabilities):
+    """
+    LLM 按指令增强已有技能（保留原功能 + 新增能力）。
+    返回 (new_code, new_desc) 或 None（失败/校验不过）。
+    """
+    if not _llm_available():
+        return None
+    caps_json = json.dumps(capabilities, ensure_ascii=False, indent=2)
+    system = (
+        "你是小虾米的技能增强器。根据【增强指令】升级已有技能代码，"
+        "保留原有全部功能，只输出增强后的完整 Python 代码。\n\n"
+        "【环境能力清单】\n%s\n\n"
+        "规则：\n"
+        "1. 函数名保持 %s 不变\n"
+        "2. 保留原有功能，新增指令要求的能力\n"
+        "3. 只能使用环境清单里真实存在的能力；本环境没有的不要用\n"
+        "4. import 只能用标准库/清单库/hardware\n"
+        "5. 函数接收 param: str = ''，返回字符串结果\n"
+        "6. 保留并更新 __skill_meta__ 的 description\n"
+        "7. 只输出 Python 代码，不要解释，不要 markdown 代码块"
+        % (caps_json, existing_name)
+    )
+    user = "【已有技能代码】\n%s\n\n【增强指令】\n%s\n\n请输出增强后的完整代码。" % (existing_code, instructions)
+    try:
+        cloud = CloudEngine()
+        result = cloud.chat([
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ])
+        code = ""
+        if isinstance(result, dict):
+            code = result.get("answer", "")
+        elif isinstance(result, str):
+            code = result
+        code = _strip_code_fence(code)
+        if not code or len(code) < 30:
+            return None
+        check = validate_code(code, capabilities)
+        if not check["ok"]:
+            logger.info("[Factory] 增强结果未通过校验: %s", check["violations"][:3])
+            return None
+        func_name = extract_skill_info(code)[0]
+        if func_name != existing_name:
+            logger.info("[Factory] 增强后函数名变了 (%s -> %s)，拒绝", existing_name, func_name)
+            return None
+        desc = extract_skill_info(code)[1] or ""
+        return code, desc
+    except Exception as e:
+        logger.warning("[Factory] 增强调用失败: %s", e)
+        return None
+
+
 # ==================== LLM 迭代生成 ====================
 
 def _llm_available():

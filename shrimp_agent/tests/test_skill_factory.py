@@ -140,6 +140,19 @@ def test_strip_code_fence():
     assert skill_factory._strip_code_fence("") == ""
 
 
+def test_suggest_upgrades_offline():
+    """无 LLM 时能力推荐返回空列表（不阻塞创建）"""
+    old = settings.api_key
+    settings.api_key = "sk-xxx"
+    try:
+        r = skill_factory.suggest_skill_upgrades("open_notepad", "打开记事本", 'def open_notepad():\n    pass', {})
+        assert r == []
+        r = skill_factory.enhance_skill("open_notepad", 'def open_notepad():\n    pass', "追加写入", {})
+        assert r is None
+    finally:
+        settings.api_key = old
+
+
 if __name__ == "__main__":
     test_templates_empty()
     test_available_templates_empty()
@@ -153,4 +166,5 @@ if __name__ == "__main__":
     test_extract_target()
     test_find_similar_skills()
     test_strip_code_fence()
+    test_suggest_upgrades_offline()
     print("✅ skill_factory 测试通过")
