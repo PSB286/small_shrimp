@@ -46,6 +46,13 @@
       ],
       "skill": "open_paint",
       "description": "打开系统图画应用"
+    },
+    {
+      "keywords": [
+        "跟我打招呼"
+      ],
+      "skill": "greet",
+      "description": "跟我打招呼 - 向用户发出友好问候"
     }
   ],
   "auto_create": true,

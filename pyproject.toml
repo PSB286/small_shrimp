@@ -1,6 +1,7 @@
 [project]
 name = "shrimp_agent"
-version = "0.1.0"
+version = "0.2.0"
+description = "环境自适应小虾米：可部署到任意环境的自学习智能体"
 dependencies = [
     "fastapi",
     "uvicorn",

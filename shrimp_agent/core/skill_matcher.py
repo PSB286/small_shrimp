@@ -5,12 +5,13 @@
 import json
 import os
 import re
+from config import settings
 from utils.logger import logger
 
 
 class SkillMatcher:
-    def __init__(self, config_path: str = "config/skill_mappings.json"):
-        self.config_path = config_path
+    def __init__(self, config_path: str = None):
+        self.config_path = config_path or os.path.join(settings.base_dir, "config", "skill_mappings.json")
         self.mappings = []
         self.auto_create = True
         self.patterns = {}
@@ -37,26 +38,10 @@ class SkillMatcher:
             self.mappings = []
     
     def _create_default_config(self):
-        """创建默认配置文件"""
+        """创建默认配置文件（匹配规则由技能引导生成后自动添加）"""
         os.makedirs(os.path.dirname(self.config_path), exist_ok=True)
         default_config = {
-            "mappings": [
-                {
-                    "keywords": ["截个图", "截图", "屏幕截图", "截屏"],
-                    "skill": "screenshot",
-                    "description": "截取屏幕截图"
-                },
-                {
-                    "keywords": ["打开计算器", "计算器"],
-                    "skill": "open_calculator",
-                    "description": "打开计算器"
-                },
-                {
-                    "keywords": ["打开浏览器", "浏览器"],
-                    "skill": "browser",
-                    "description": "打开浏览器"
-                }
-            ],
+            "mappings": [],
             "auto_create": True,
             "patterns": {
                 "open": "^(?:打开|运行|启动|执行|使用)\\s*(.+)$"

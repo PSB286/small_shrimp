@@ -48,12 +48,14 @@ class SkillManager:
                         params = {p: "any" for p in sig.parameters}
                         meta = getattr(module, "__skill_meta__", {})
                         description = meta.get("description", f"技能 {skill_name}")
+                        tier = meta.get("tier", 2)  # 0=系统核心 1=环境基础 2=学习生成
 
                         self.skills[skill_name] = {
                             "func": func,
                             "description": description,
                             "params": params,
-                            "filepath": filepath
+                            "filepath": filepath,
+                            "tier": tier
                         }
                         logger.info(f"[SkillManager] 已加载: {skill_name} (路径: {filepath})")
                     else:
@@ -97,6 +99,11 @@ class SkillManager:
     def skill_exists(self, skill_name: str) -> bool:
         """检查技能是否存在"""
         return skill_name in self.skills
+
+    def get_skill_tier(self, skill_name: str) -> int:
+        """获取技能级别（0=系统核心 1=环境基础 2=学习生成）"""
+        info = self.skills.get(skill_name)
+        return info.get("tier", 2) if info else 2
 
     def modify_skill(self, skill_name: str, new_code: str) -> str:
         """修改技能代码并重新加载"""

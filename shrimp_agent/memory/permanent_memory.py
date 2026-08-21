@@ -19,6 +19,7 @@ class PermanentMemory:
             "preferences": {},
             "important_facts": [],
             "custom_memories": [],
+            "skill_stats": {},
             "conversation_summary": "",
             "last_updated": None,
             "created_at": None
@@ -201,6 +202,55 @@ class PermanentMemory:
             logger.error(f"[PermanentMemory] 删除自定义记忆失败: {e}")
             return False
 
+    # ==================== 技能档案（自优化经验库） ====================
+
+    def record_skill_result(self, skill_name: str, success: bool, error: str = "") -> bool:
+        """记录一次技能执行结果，维护成功率与连续失败次数"""
+        try:
+            stats = self.memory_data.setdefault("skill_stats", {})
+            entry = stats.setdefault(skill_name, {
+                "count": 0, "success": 0, "failures": 0,
+                "consecutive_failures": 0, "last_error": "",
+                "last_run": None, "last_success": None
+            })
+            entry["count"] += 1
+            entry["last_run"] = datetime.now().isoformat()
+            if success:
+                entry["success"] += 1
+                entry["consecutive_failures"] = 0
+                entry["last_error"] = ""
+                entry["last_success"] = entry["last_run"]
+            else:
+                entry["failures"] += 1
+                entry["consecutive_failures"] += 1
+                entry["last_error"] = (error or "")[:200]
+            self._save()
+            return True
+        except Exception as e:
+            logger.error(f"[PermanentMemory] 记录技能结果失败: {e}")
+            return False
+
+    def get_skill_stats(self, skill_name: str) -> dict:
+        """获取单个技能的执行统计"""
+        return self.memory_data.get("skill_stats", {}).get(skill_name, {})
+
+    def get_all_skill_stats(self) -> Dict:
+        """获取所有技能统计"""
+        return self.memory_data.get("skill_stats", {})
+
+    def reset_skill_stats(self, skill_name: str = None) -> bool:
+        """重置技能统计（指定技能或全部）"""
+        try:
+            if skill_name is None:
+                self.memory_data["skill_stats"] = {}
+            else:
+                self.memory_data.setdefault("skill_stats", {}).pop(skill_name, None)
+            self._save()
+            return True
+        except Exception as e:
+            logger.error(f"[PermanentMemory] 重置技能统计失败: {e}")
+            return False
+
     # ==================== 对话摘要 ====================
 
     def set_conversation_summary(self, summary: str) -> bool:
@@ -226,6 +276,7 @@ class PermanentMemory:
             "preferences": self.get_all_preferences(),
             "important_facts": self.get_facts(),
             "custom_memories": self.get_custom_memories(),
+            "skill_stats": self.get_all_skill_stats(),
             "conversation_summary": self.get_conversation_summary(),
             "last_updated": self.memory_data.get("last_updated"),
             "created_at": self.memory_data.get("created_at")
@@ -265,6 +316,7 @@ class PermanentMemory:
                 "preferences": {},
                 "important_facts": [],
                 "custom_memories": [],
+                "skill_stats": {},
                 "conversation_summary": "",
                 "last_updated": datetime.now().isoformat(),
                 "created_at": self.memory_data.get("created_at", datetime.now().isoformat())

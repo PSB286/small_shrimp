@@ -21,9 +21,21 @@ from core.skill_manager import SkillManager
 from memory.short_term import ShortTermMemory
 # 导入日志记录器，用于记录运行信息
 from utils.logger import logger
+# 环境感知与自优化
+from core.environment_probe import EnvironmentProbe
+from core.skill_factory import bootstrap_skills
+from core.self_optimizer import SelfOptimizer
+from config import settings
 
-# 创建 FastAPI 应用实例，并设置标题
-app = FastAPI(title="GGB小虾米 · 智能助手")
+# ==================== 启动初始化 ====================
+# 1. 环境探测：生成/读取能力清单（技能生成与硬件抽象的唯一依据）
+probe = EnvironmentProbe()
+capabilities = probe.ensure_capabilities()
+logger.info(f"[Main] 环境能力: 舵机x{len(capabilities.get('actuators') or [])} "
+            f"屏幕={bool(capabilities.get('display'))} 麦克风={bool(capabilities.get('audio_in'))}")
+
+# 2. 创建 FastAPI 应用实例
+app = FastAPI(title="GGB小虾米 · 环境自适应智能助手")
 
 # 添加跨域中间件，允许所有源（方便开发调试）
 app.add_middleware(
@@ -33,14 +45,21 @@ app.add_middleware(
     allow_headers=["*"],  # 允许所有请求头
 )
 
-# 挂载静态文件目录，将 /static 路径映射到本地 static 文件夹
-app.mount("/static", StaticFiles(directory="static"), name="static")
+# 挂载静态文件目录（绝对路径，摆脱 cwd 依赖）
+app.mount("/static", StaticFiles(directory=os.path.join(settings.base_dir, "static")), name="static")
 
-# 初始化 Agent 主循环实例
+# 3. 初始化 Agent 主循环实例（内部会按能力清单引导创建基础技能）
 agent = AgentLoop()
-# 初始化技能管理器实例
+# 4. 初始化技能管理器实例（与 agent 共享同一技能目录）
 skill_mgr = SkillManager()
-# 初始化短期记忆实例
+# 5. 确保基础技能已引导（agent 引导后这里再同步一次）
+if settings.auto_bootstrap:
+    created = bootstrap_skills(skill_mgr, capabilities)
+    if created:
+        logger.info(f"[Main] 引导创建基础技能: {created}")
+# 6. 自优化器（修复失败技能）
+optimizer = SelfOptimizer(skill_mgr, capabilities)
+# 7. 初始化短期记忆实例
 memory = ShortTermMemory()
 
 
@@ -49,7 +68,7 @@ memory = ShortTermMemory()
 async def get():
     try:
         # 尝试打开 static/index.html 文件
-        with open("static/index.html", "r", encoding="utf-8") as f:
+        with open(os.path.join(settings.base_dir, "static", "index.html"), "r", encoding="utf-8") as f:
             # 如果存在，返回文件内容作为 HTML 响应
             return HTMLResponse(f.read())
     except FileNotFoundError:
@@ -83,6 +102,47 @@ async def chat(request: Request):
     # 返回 JSON 格式的回复
     return JSONResponse({"reply": reply})
 
+
+# ==================== 环境能力管理接口 ====================
+
+# 查看当前环境能力清单与探测结果
+@app.get("/environment")
+async def get_environment():
+    """查看环境探测结果与能力清单"""
+    if not probe.probes:
+        probe.run_probes()
+    caps = capabilities
+    return JSONResponse({
+        "success": True,
+        "capabilities": caps,
+        "probes": probe.probes
+    })
+
+
+# 手动修正环境能力（通道③：界面修正）
+@app.post("/environment")
+async def update_environment(request: Request):
+    """修改能力清单（如声明舵机布局/屏幕/麦克风）"""
+    try:
+        data = await request.json()
+        ok, msg = probe.update(data)
+        if not ok:
+            return JSONResponse({"error": msg}, status_code=400)
+        # 能力变化 → 重建硬件 + 重新引导技能
+        from hardware import reload_hardware
+        reload_hardware()
+        agent.capabilities = probe.get_capabilities()
+        global capabilities
+        capabilities = agent.capabilities
+        bootstrap_skills(skill_mgr, capabilities)
+        agent.skills.reload_skills()
+        agent.cloud.set_skills_info(agent.skills.get_skills_info())
+        return JSONResponse({"success": True, "message": msg})
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# ==================== 技能管理接口 ====================
 
 # 定义 /skills 路径的 GET 处理函数，返回当前所有技能信息
 @app.get("/skills")
@@ -120,7 +180,7 @@ async def toggle_skill(request: Request):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
-# 定义 /skills/create 路径的 POST 处理函数，手动创建新技能
+# 定义 /skills/create 路径的 POST 处理函数，手动创建新技能（走能力感知工厂）
 @app.post("/skills/create")
 async def create_skill(request: Request):
     data = await request.json()
@@ -128,32 +188,82 @@ async def create_skill(request: Request):
     description = data.get("description")
     params = data.get("params", {})
 
-    if not skill_name or not description:
-        return JSONResponse({"error": "缺少 skill_name 或 description"}, status_code=400)
+    if not description:
+        return JSONResponse({"error": "缺少 description"}, status_code=400)
 
-    from core.skill_creator import SkillCreator
-    creator = SkillCreator()
-    success, msg = creator.create_skill(skill_name, description, params)
+    from core.skill_factory import generate_skill, sanitize_filename
+    caps = agent.capabilities or capabilities
+    history = memory.get_history()
+    result = generate_skill(description, caps, history)
+    if not result:
+        return JSONResponse({
+            "error": "生成失败：需求不明确或本环境能力不足（可先通过 /environment 声明硬件）"
+        }, status_code=400)
 
-    if success:
-        skill_mgr.load_skills()
-        return JSONResponse({"success": True, "message": msg})
-    else:
-        return JSONResponse({"success": False, "error": msg}, status_code=400)
+    code, name, desc, msgs = result
+    name = sanitize_filename(name or skill_name, "new_skill")
+    filepath = os.path.join(skill_mgr.skills_dir, f"{name}.py")
+    if os.path.exists(filepath):
+        return JSONResponse({"error": f"技能 {name} 已存在"}, status_code=400)
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write(code)
+    skill_mgr.reload_skills()
+    return JSONResponse({"success": True, "message": f"技能 {name} 已创建（{msgs[0] if msgs else ''}）"})
 
 
-# 定义 /skills/suggest 路径的 POST 处理函数，主动建议新技能
+# 手动触发技能自修复
+@app.post("/skills/fix")
+async def fix_skill(request: Request):
+    """修复一个执行失败的技能（走五步验证链）"""
+    try:
+        data = await request.json()
+        skill_name = data.get("skill_name")
+        if not skill_name:
+            return JSONResponse({"error": "缺少 skill_name"}, status_code=400)
+        stats = agent.permanent_memory.get_skill_stats(skill_name)
+        error = data.get("error") or stats.get("last_error", "") or "手动修复"
+        result = optimizer.optimize_skill(skill_name, error, force=True)
+        return JSONResponse(result, status_code=200 if result["success"] else 400)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# 技能学习档案（成功率/连续失败）
+@app.get("/skills/stats")
+async def get_skill_stats():
+    """查看每个技能的执行统计（自优化经验库）"""
+    return JSONResponse({
+        "success": True,
+        "stats": agent.permanent_memory.get_all_skill_stats(),
+        "audit": optimizer.audit_log()
+    })
+
+
+# 定义 /skills/suggest 路径的 POST 处理函数，主动建议新技能（能力感知）
 @app.post("/skills/suggest")
 async def suggest_skill(request: Request):
     from core.skill_learner import SkillLearner
     learner = SkillLearner()
     history = memory.get_history()
-    suggestion = learner.suggest_skill(history)
+    caps = agent.capabilities or capabilities
+    suggestion = learner.suggest_skill(history, caps)
 
     if suggestion:
         return JSONResponse({"suggestion": suggestion})
     else:
         return JSONResponse({"suggestion": None, "message": "暂无合适的技能建议"})
+
+
+# 硬件状态（模拟器状态，调试用）
+@app.get("/hardware/state")
+async def get_hardware_state():
+    """查看当前硬件状态（模拟后端返回完整状态）"""
+    try:
+        from hardware import get_hardware
+        hw = get_hardware()
+        return JSONResponse({"success": True, "state": hw.state()})
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 # ==================== 助手名称管理接口 ====================
@@ -439,5 +549,5 @@ async def get_memory_context():
 
 # 如果此文件作为主程序运行，则启动 Uvicorn 服务器
 if __name__ == "__main__":
-    # 启动服务，监听 127.0.0.1 的 8000 端口
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    # 启动服务，监听 0.0.0.0 的 8000 端口（便于局域网设备访问）
+    uvicorn.run(app, host="0.0.0.0", port=8000)
