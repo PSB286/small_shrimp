@@ -1,57 +1,38 @@
-# 🦐 小虾米 · 环境自适应智能体
+# 🦐 小虾米 · 环境自适应智能体（最简状态）
 
-> 部署到任何环境，都能自动感知环境条件 → 生成自己的技能 → 越用越聪明（自优化 + 记忆）。
+> 部署到任何环境：先探测环境条件 → 需要什么技能时按条件生成 → 越用越聪明（自优化 + 记忆）。
+> **当前为最简状态**：不预置任何技能模板，Windows 上启动即为"纯聊天 + 记忆"，
+> 技能全部由 LLM 按需生成（说"新增技能：XXX"）。
 
 ## 一、核心概念
 
-**"条件即技能"**：小虾米启动时先探测环境有什么（能力清单 `data/capabilities.json`），
-再按清单生成自己会什么（技能），技能用不好就自己修自己（自优化闭环），经历全部记下来（永久记忆）。
+**"条件即技能"**：小虾米启动时探测环境（能力清单 `data/capabilities.json`），
+聊天中你需要它做什么，它就按能力清单让 LLM 生成对应技能；技能用不好就自己修（自优化闭环）；
+经历全部记下来（永久记忆）。换一个环境，重新探测、重新学习。
 
-- 部署到**机器狗**（5舵机+LCD脸+麦克风）→ 自动生成：舵机测试 / 摇尾巴 / 走路 / 跳舞 / 做表情 / 收音
-- 部署到**电脑** → 探测到屏幕/网络/库 → 生成对应技能；没有硬件就退回"纯聊天+记忆"最小能力集
-- 换一个环境 → 重新探测、重新长技能
-
-## 二、快速开始
+## 二、快速开始（Windows 开发环境）
 
 ```bash
-# 1. 进入项目目录
 cd shrimp_agent
-
-# 2. 安装依赖（轻量：只需 Web + 请求库）
-pip install -r requirements.txt
-
-# 3. 配置 API Key
-copy .env.example .env        # Windows
-# 编辑 .env 填入 API_KEY
-
-# 4. 启动（自动完成：环境探测 → 引导生成基础技能）
+pip install -r requirements.txt        # 轻量：只需 Web + 请求库
+copy .env.example .env                 # 填入 API_KEY
 python -m uvicorn main:app --host 0.0.0.0 --port 8000
-
-# 5. 浏览器打开 http://localhost:8000 开始聊天
+# 浏览器打开 http://localhost:8000
 ```
 
 ## 三、环境能力三通道
 
 | 通道 | 方式 | 说明 |
 |---|---|---|
-| ① 主动提供 | 在项目根放 `environment.json` | 部署者直接声明硬件（嵌入式环境推荐） |
-| ② 自动探测 | 启动时自动探测 | OS/网络/库/舵机板/屏幕/麦克风，失败记"无" |
-| ③ 界面修正 | `POST /environment` | Web/接口修改能力清单，改完自动重新引导技能 |
+| ① 主动提供 | 项目根放 `environment.json` | 部署者直接声明硬件（如舵机/屏幕/麦克风） |
+| ② 自动探测 | 启动自动探测 | OS/Python/网络/可用库/舵机板/屏幕/麦克风，失败记"无" |
+| ③ 界面修正 | `POST /environment` | 查看/修改能力清单，改完自动生效 |
 
-`environment.json` 示例（机器狗）：
+最简状态不假设任何硬件：Windows 上探测结果只有 `platform/python/network/libs`，
+不会凭空生成技能。声明了能力才可能生成对应技能，例如：
+
 ```json
-{
-  "actuators": [
-    {"id": "leg_fl", "type": "servo", "channel": 0, "min": 0, "max": 180},
-    {"id": "leg_fr", "type": "servo", "channel": 1, "min": 0, "max": 180},
-    {"id": "leg_bl", "type": "servo", "channel": 2, "min": 0, "max": 180},
-    {"id": "leg_br", "type": "servo", "channel": 3, "min": 0, "max": 180},
-    {"id": "tail",  "type": "servo", "channel": 4, "min": 0, "max": 180}
-  ],
-  "display":  {"type": "ssd1306", "w": 128, "h": 64},
-  "audio_in": {"type": "mic"},
-  "network":  true
-}
+{ "display": {"type": "display"}, "network": true }
 ```
 
 ## 四、说话方式
@@ -60,42 +41,41 @@ python -m uvicorn main:app --host 0.0.0.0 --port 8000
 |---|---|
 | 我叫小明 / 我喜欢蓝色 / 记住我每天7点起床 | 记入永久记忆 |
 | 查看记忆 / 我是谁 / 忘记名字 | 读/删记忆 |
-| 新增技能：摇尾巴 / 学会跳舞 | LLM 按能力清单生成技能（迭代校验，最多3轮） |
-| 执行跳舞 / 打开dance | 执行技能（失败自动进入自优化） |
-| 修复技能 dance | 手动触发自优化（五步验证链+备份回滚） |
-| 列出技能 / 删除技能 dance | 技能管理 |
+| 新增技能：XXX | LLM 按能力清单生成技能（迭代校验，最多3轮） |
+| 执行 / 打开 / 运行 XXX | 执行技能（失败自动进入自优化） |
+| 修复技能 XXX | 手动触发自优化（五步验证链+备份回滚） |
+| 列出技能 / 删除技能 XXX | 技能管理 |
 
 ## 五、自优化安全边界
 
 - **T0 系统核心**：禁止自动修改
-- **T1 环境基础技能**（引导生成）：失败自动修复
+- **T1 环境基础技能**：失败自动修复
 - **T2 学习生成技能**：自动修复；连续失败≥2次自动停用，等主人确认
 - 每次修改前：语法编译 → 能力约束校验(AST) → 模拟执行(dry-run) → 备份 → 热重载 → 失败回滚
 - 每日自动修改上限（默认10次），全部修改写入 `data/optimize_audit.json` 审计日志
 
-## 六、硬件抽象层
+## 六、硬件抽象层（可选扩展）
 
-技能代码只依赖 `hardware` 抽象层，模拟/真实硬件无缝切换（`HARDWARE_MODE=auto|sim|real`）：
+技能代码只依赖 `hardware` 抽象层（默认 PC 模拟器，装上驱动库自动切真实后端）：
 
 ```python
 from hardware import hw
-
-hw.servo("tail").set_angle(90, speed=30)      # 舵机（角度必须在量程内）
-hw.play_poses([{"leg_fl": 45, ...}], interval=0.25)  # 动作序列（跑/跳舞）
-hw.display().show_emoji("😊")                 # LCD 表情
-hw.mic().listen(3)                            # 收音
-hw.speaker().say("你好")                      # 说话（TTS 预留）
+hw.servo("leg_1").set_angle(90)          # 舵机（需在能力清单声明 actuators）
+hw.display().show_emoji("😊")            # 屏幕
+hw.mic().listen(3)                       # 麦克风
+hw.speaker().say("你好")                 # 说话（TTS 预留）
 ```
 
-- PC 上默认**模拟器**：虚拟舵机/虚拟屏幕，状态可查 `GET /hardware/state`
-- 树莓派上装好 `smbus2`/`luma.oled`/`pyaudio` 后自动切**真实驱动**
-- 真实驱动文件：`hardware/real.py`（PCA9685 / SSD1306 / 麦克风）
+- PC 上默认**模拟器**：状态可查 `GET /hardware/state`
+- 树莓派装好 `smbus2`/`luma.oled`/`pyaudio` 后自动切真实驱动（`hardware/real.py`）
+- **最简状态不生成任何硬件技能**；需要时通过 `environment.json` 声明能力后，
+  聊天中让 LLM 按清单生成对应技能
 
 ## 七、接口速览
 
 ```
 GET  /environment        查看能力清单与探测结果
-POST /environment        手动修正环境能力（改完自动重新引导技能）
+POST /environment        手动修正环境能力
 GET  /skills             技能列表
 POST /skills/create      按描述生成技能
 POST /skills/fix         修复技能
@@ -111,12 +91,12 @@ POST /chat               聊天（自动分发：记忆/技能/云端）
 ```bash
 python tests/test_environment_probe.py      # 环境探测
 python tests/test_capability_checker.py     # 能力约束校验
-python tests/test_skill_factory.py          # 技能工厂/模板
+python tests/test_skill_factory.py          # 技能工厂（最简状态）
 python tests/test_self_optimizer.py         # 自优化闭环
 python tests/test_hardware.py               # 硬件模拟
 python tests/test_skill_manager.py          # 技能管理器
 python tests/test_memory.py                 # 记忆/技能档案
-python tests/integration_robot_dog.py       # 端到端：机器狗环境全流程
+python tests/integration_minimal.py         # 端到端：Windows 最简状态全流程
 ```
 
 ## 九、安全

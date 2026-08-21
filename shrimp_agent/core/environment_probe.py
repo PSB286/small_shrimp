@@ -111,18 +111,14 @@ PROBES = {
 
 # ==================== 探测 → 能力清单 ====================
 
-def _default_servos():
-    """探测到舵机板时给出默认 5 舵机布局（4腿+1尾），可在界面/清单中改"""
-    return [
-        {"id": "leg_fl", "type": "servo", "channel": 0, "min": 0, "max": 180},
-        {"id": "leg_fr", "type": "servo", "channel": 1, "min": 0, "max": 180},
-        {"id": "leg_bl", "type": "servo", "channel": 2, "min": 0, "max": 180},
-        {"id": "leg_br", "type": "servo", "channel": 3, "min": 0, "max": 180},
-        {"id": "tail", "type": "servo", "channel": 4, "min": 0, "max": 180},
-    ]
-
+# ==================== 探测 → 能力清单 ====================
 
 def _capabilities_from_probes(probes, libs):
+    """
+    由探测结果生成能力清单（最简状态）：
+    只保留探测到的通用能力，不做任何默认硬件假设。
+    需要舵机/屏幕等具体硬件时，通过 environment.json 主动提供。
+    """
     caps = {
         "source": "probe",
         "platform": probes.get("platform", {}).get("detail", platform.system()),
@@ -131,10 +127,8 @@ def _capabilities_from_probes(probes, libs):
         "libs": [name for name, ok in libs.items() if ok],
         "probed_at": datetime.now().isoformat(timespec="seconds"),
     }
-    if probes.get("servo_board", {}).get("available"):
-        caps["actuators"] = _default_servos()
     if probes.get("display", {}).get("available"):
-        caps["display"] = {"type": "ssd1306", "w": 128, "h": 64}
+        caps["display"] = {"type": "display"}
     if probes.get("mic", {}).get("available"):
         caps["audio_in"] = {"type": "mic"}
     return caps

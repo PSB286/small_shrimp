@@ -156,14 +156,6 @@ class SkillLearner:
                 "description": "打开应用程序",
                 "keywords": ["打开", "启动", "运行"]
             },
-            "跳舞|舞": {
-                "description": "跳舞（动作序列）",
-                "keywords": ["跳舞", "舞"]
-            },
-            "摇尾巴|尾巴": {
-                "description": "摇尾巴",
-                "keywords": ["摇尾巴", "尾巴"]
-            },
         }
 
         for pattern, info in keyword_patterns.items():

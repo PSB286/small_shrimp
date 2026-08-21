@@ -1,14 +1,15 @@
 """
 技能工厂 - 按能力清单生成/引导技能
 
-两条生成路径：
-A. 模板路径（离线兜底）：能力模板库 templates/skill_templates.py，
-   按能力清单填充舵机 id 等占位符，无需 LLM。
-B. LLM 路径（迭代生成）：生成 → 校验 → 失败则把原因喂回去重试
+生成路径：
+LLM 路径（迭代生成）：生成 → 校验 → 失败则把原因喂回去重试
    （最多 max_generate_rounds 轮），校验 = 语法编译 + 能力约束检查。
 
-启动引导 bootstrap_skills()：按能力清单自动生成本环境缺失的基础技能
-（有舵机 → 生成 舵机测试/摇尾巴/走路/跳舞；有屏幕 → 生成 表情…）。
+模板路径（离线兜底）：能力模板库 templates/skill_templates.py 当前为空
+   （最简状态，不预置任何技能模板）；将来需要离线基础技能时往库里加即可。
+
+启动引导 bootstrap_skills()：当前模板库为空，不会预生成任何技能；
+   技能全部由用户对话触发 LLM 按需生成。
 """
 
 import ast
@@ -144,7 +145,7 @@ def sanitize_filename(name, fallback="new_skill"):
                 clean = ''.join(p[0] for p in pinyin(clean, style=Style.NORMAL)).lower()
             except Exception:
                 clean = re.sub(r'[\u4e00-\u9fff]', '', clean)
-        name = re.sub(r'[^a-zA-Z0-9_]', '', clean).lower() or fallback
+        name = re.sub(r'[^a-zA-Z0-9_]', '', clean).strip('_').lower() or fallback
         if name[0].isdigit():
             name = "skill_" + name
     return name
@@ -256,21 +257,18 @@ def _strip_code_fence(code):
 
 
 def _generate_from_template_match(description, capabilities):
-    """按需求关键词匹配模板（离线兜底）"""
-    keyword_map = [
-        ("walk", ["走", "跑", "行", "walk"]),
-        ("dance", ["舞", "dance", "跳"]),
-        ("wag_tail", ["尾巴", "摇尾", "wag"]),
-        ("show_face", ["表情", "脸", "face", "屏幕", "显示"]),
-        ("listen", ["听", "收音", "录音", "listen", "麦克风"]),
-        ("servo_test", ["舵机", "测试", "servo"]),
-    ]
-    for name, keywords in keyword_map:
-        if template_available(name, capabilities) and any(k in description for k in keywords):
-            return render_template(name, capabilities, description)
-    # 都不匹配且只有动作能力 → 默认给 servo_test
-    if template_available("servo_test", capabilities):
-        return render_template("servo_test", capabilities, description)
+    """按需求关键词匹配模板（离线兜底）。
+
+    当前模板库为空（最简状态），直接返回 None；
+    将来在 templates/skill_templates.py 添加模板后，此函数按关键词匹配生成。
+    """
+    if not TEMPLATES:
+        return None
+    for name, template in TEMPLATES.items():
+        if template_available(name, capabilities):
+            desc = template.get("description", "")
+            if any(k in description for k in [name, desc]):
+                return render_template(name, capabilities, description)
     return None
 
 
