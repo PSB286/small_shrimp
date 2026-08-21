@@ -87,11 +87,19 @@ async def chat(request: Request):
     if not user_input:
         return JSONResponse({"reply": "请输入消息"})
 
+    # 支持引用：前端传来的 quote = {"role": "user"/"bot", "content": "被引用的消息"}
+    quote = data.get("quote")
+    agent_input = user_input
+    if isinstance(quote, dict) and quote.get("content"):
+        quoted = str(quote.get("content"))
+        role_label = "你" if quote.get("role") == "user" else "小虾米"
+        agent_input = f"【我引用了{role_label}的这段话】\n{quoted}\n\n{user_input}"
+
     # 从短期记忆中获取对话历史
     history = memory.get_history()
 
     # 调用 Agent 循环处理用户输入，得到回复
-    reply = agent.run(user_input, history)
+    reply = agent.run(agent_input, history)
 
     # 将本次对话存入短期记忆（用户输入 + 助手回复）
     memory.add(user_input, reply)

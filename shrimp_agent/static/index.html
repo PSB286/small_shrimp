@@ -52,10 +52,10 @@
         }
 
         .chat-box {
-            width: 580px;
+            width: 600px;
             max-width: 100%;
             height: 92vh;
-            max-height: 800px;
+            max-height: 820px;
             background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(245,252,253,0.96));
             border-radius: 28px;
             box-shadow: 0 18px 48px var(--shadow);
@@ -70,7 +70,7 @@
         .header {
             background: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(233,252,255,0.92));
             backdrop-filter: blur(8px);
-            padding: 16px 24px;
+            padding: 14px 20px;
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -81,18 +81,19 @@
         .header .left {
             display: flex;
             align-items: center;
-            gap: 14px;
+            gap: 12px;
+            min-width: 0;
         }
 
         .header .avatar {
-            width: 42px;
-            height: 42px;
+            width: 40px;
+            height: 40px;
             border-radius: 50%;
             background: linear-gradient(135deg, #1ec9d9, #5ad8cf 45%, #ffb774 100%);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 20px;
+            font-size: 19px;
             font-weight: 700;
             color: #fff;
             box-shadow: 0 6px 16px rgba(30, 201, 217, 0.22);
@@ -100,12 +101,18 @@
             border: 2px solid rgba(255,255,255,0.8);
         }
 
+        .header .info {
+            min-width: 0;
+        }
         .header .info h1 {
-            font-size: 18px;
+            font-size: 17px;
             font-weight: 700;
             color: var(--text);
             line-height: 1.2;
             letter-spacing: 0.02em;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .header .info .sub {
@@ -148,7 +155,7 @@
             background: rgba(30, 201, 217, 0.08);
             border: none;
             cursor: pointer;
-            font-size: 18px;
+            font-size: 17px;
             color: var(--muted-strong);
             padding: 6px 8px;
             border-radius: 12px;
@@ -165,11 +172,11 @@
         /* ===== 消息区域 ===== */
         .messages {
             flex: 1;
-            padding: 20px 24px 12px 24px;
+            padding: 18px 20px 10px 20px;
             overflow-y: auto;
             display: flex;
             flex-direction: column;
-            gap: 10px;
+            gap: 12px;
             background:
                 radial-gradient(circle at 10% 0%, rgba(30, 201, 217, 0.06), transparent 20%),
                 radial-gradient(circle at 90% 100%, rgba(255, 183, 116, 0.09), transparent 24%),
@@ -190,13 +197,13 @@
         /* ===== 消息气泡 ===== */
         .msg {
             max-width: 88%;
-            padding: 10px 16px;
+            padding: 10px 14px;
             border-radius: 16px;
             line-height: 1.7;
             font-size: 15px;
             word-wrap: break-word;
             animation: fadeUp 0.3s ease-out;
-            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+            position: relative;
         }
 
         .msg.user {
@@ -222,6 +229,88 @@
             margin-bottom: 4px;
             font-weight: 600;
             letter-spacing: 0.04em;
+        }
+
+        /* 消息元信息：时间 + 操作按钮 */
+        .msg .meta {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            margin-top: 6px;
+            opacity: 0;
+            transition: opacity 0.18s;
+        }
+        .msg:hover .meta {
+            opacity: 1;
+        }
+
+        .msg .meta .time {
+            font-size: 11px;
+            color: rgba(93, 125, 136, 0.75);
+        }
+        .msg.user .meta .time {
+            color: rgba(255, 255, 255, 0.75);
+        }
+
+        .msg .meta .msg-actions {
+            display: flex;
+            gap: 4px;
+        }
+        .msg .meta .msg-actions button {
+            background: rgba(30, 201, 217, 0.1);
+            border: none;
+            border-radius: 8px;
+            padding: 3px 9px;
+            font-size: 11px;
+            color: var(--muted-strong);
+            cursor: pointer;
+            transition: background 0.15s, transform 0.1s;
+            font-family: inherit;
+        }
+        .msg.user .meta .msg-actions button {
+            background: rgba(255, 255, 255, 0.2);
+            color: #fff;
+        }
+        .msg .meta .msg-actions button:hover {
+            background: rgba(30, 201, 217, 0.2);
+        }
+        .msg.user .meta .msg-actions button:hover {
+            background: rgba(255, 255, 255, 0.32);
+        }
+        .msg .meta .msg-actions button:active {
+            transform: scale(0.94);
+        }
+
+        /* 引用块（气泡内） */
+        .msg .quote {
+            border-left: 3px solid var(--secondary);
+            background: rgba(255, 183, 116, 0.1);
+            border-radius: 8px;
+            padding: 6px 10px;
+            margin-bottom: 8px;
+            font-size: 12.5px;
+        }
+        .msg.user .quote {
+            border-left-color: rgba(255, 255, 255, 0.85);
+            background: rgba(255, 255, 255, 0.16);
+        }
+        .msg .quote .quote-label {
+            font-weight: 600;
+            color: #c07b2e;
+            margin-bottom: 2px;
+        }
+        .msg.user .quote .quote-label {
+            color: rgba(255, 255, 255, 0.92);
+        }
+        .msg .quote .quote-body {
+            color: var(--muted-strong);
+            word-break: break-all;
+            max-height: 60px;
+            overflow: hidden;
+        }
+        .msg.user .quote .quote-body {
+            color: rgba(255, 255, 255, 0.9);
         }
 
         /* ===== Markdown 样式 ===== */
@@ -340,7 +429,7 @@
 
         /* ===== 快捷按钮 ===== */
         .quick-actions {
-            padding: 8px 24px 12px 24px;
+            padding: 8px 20px 10px 20px;
             display: flex;
             flex-wrap: wrap;
             gap: 6px;
@@ -353,7 +442,7 @@
             background: linear-gradient(180deg, #ecfeff, #f8fdff);
             border: 1px solid rgba(30, 201, 217, 0.14);
             border-radius: 999px;
-            padding: 5px 14px;
+            padding: 5px 13px;
             font-size: 13px;
             color: var(--muted-strong);
             cursor: pointer;
@@ -371,55 +460,120 @@
             transform: scale(0.96);
         }
 
+        /* ===== 引用条（输入区上方） ===== */
+        .quote-bar {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            margin: 8px 20px 0 20px;
+            padding: 8px 12px;
+            background: var(--secondary-soft);
+            border: 1px solid rgba(255, 183, 116, 0.4);
+            border-radius: 12px;
+            flex-shrink: 0;
+            animation: fadeUp 0.2s ease-out;
+        }
+        .quote-bar[hidden] {
+            display: none;
+        }
+        .quote-bar .q-icon {
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        .quote-bar .q-body {
+            flex: 1;
+            min-width: 0;
+        }
+        .quote-bar .q-label {
+            font-size: 11px;
+            font-weight: 600;
+            color: #c07b2e;
+        }
+        .quote-bar .q-text {
+            font-size: 12.5px;
+            color: var(--muted-strong);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            line-height: 1.5;
+        }
+        .quote-bar button {
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: #b08a5e;
+            font-size: 15px;
+            line-height: 1.3;
+            padding: 0 2px;
+            flex-shrink: 0;
+            transition: color 0.15s, transform 0.1s;
+        }
+        .quote-bar button:hover {
+            color: #7a5a33;
+            transform: scale(1.1);
+        }
+
         /* ===== 输入区域 ===== */
         .input-area {
             display: flex;
-            padding: 12px 20px 16px 20px;
+            align-items: flex-end;
+            padding: 10px 16px 14px 16px;
             border-top: 1px solid rgba(30, 201, 217, 0.1);
             background: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(232,252,255,0.9));
             gap: 10px;
             flex-shrink: 0;
         }
 
-        .input-area input {
+        .input-wrap {
             flex: 1;
-            padding: 10px 16px;
+            min-width: 0;
+            position: relative;
+        }
+
+        .input-area textarea {
+            width: 100%;
+            resize: none;
+            padding: 10px 14px;
             border: 1px solid rgba(30, 201, 217, 0.22);
-            border-radius: 24px;
+            border-radius: 20px;
             outline: none;
             font-size: 15px;
             background: rgba(255,255,255,0.9);
             color: var(--text);
-            transition: border 0.2s, box-shadow 0.2s, transform 0.15s;
+            transition: border 0.2s, box-shadow 0.2s;
+            line-height: 1.5;
+            max-height: 140px;
+            overflow-y: auto;
+            font-family: inherit;
         }
 
-        .input-area input::placeholder {
+        .input-area textarea::placeholder {
             color: #8bb0ba;
         }
 
-        .input-area input:focus {
+        .input-area textarea:focus {
             border-color: var(--primary);
             box-shadow: 0 0 0 3px rgba(30, 201, 217, 0.12);
-            transform: translateY(-1px);
         }
 
-        .input-area input:disabled {
+        .input-area textarea:disabled {
             opacity: 0.5;
             cursor: not-allowed;
         }
 
         .input-area button {
-            padding: 10px 24px;
+            padding: 10px 22px;
             background: linear-gradient(135deg, var(--primary) 0%, #50bfeb 100%);
             color: #ffffff;
             border: none;
-            border-radius: 24px;
+            border-radius: 20px;
             cursor: pointer;
             font-weight: 600;
             font-size: 14px;
             transition: transform 0.15s, box-shadow 0.15s;
             white-space: nowrap;
             box-shadow: 0 8px 18px rgba(30, 201, 217, 0.22);
+            flex-shrink: 0;
         }
 
         .input-area button:hover {
@@ -433,6 +587,28 @@
             opacity: 0.4;
             cursor: not-allowed;
             box-shadow: none;
+            transform: none;
+        }
+
+        /* ===== Toast ===== */
+        .toast {
+            position: fixed;
+            left: 50%;
+            bottom: 40px;
+            transform: translateX(-50%) translateY(10px);
+            background: rgba(20, 58, 69, 0.92);
+            color: #fff;
+            padding: 8px 18px;
+            border-radius: 999px;
+            font-size: 13px;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.25s, transform 0.25s;
+            z-index: 200;
+        }
+        .toast.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
         }
 
         /* ===== 模态框 ===== */
@@ -464,7 +640,7 @@
         .modal {
             background: linear-gradient(180deg, #ffffff, #f4fdff);
             width: 92%;
-            max-width: 420px;
+            max-width: 440px;
             max-height: 82%;
             border-radius: 22px;
             box-shadow: 0 24px 60px rgba(18, 76, 85, 0.16);
@@ -609,6 +785,25 @@
             cursor: not-allowed;
         }
 
+        /* 环境信息 */
+        .env-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 2px;
+            border-bottom: 1px dashed rgba(30, 201, 217, 0.15);
+            font-size: 13px;
+        }
+        .env-row .k {
+            color: var(--muted);
+        }
+        .env-row .v {
+            color: var(--muted-strong);
+            font-weight: 500;
+            max-width: 70%;
+            text-align: right;
+            word-break: break-all;
+        }
+
         /* ===== 响应式 ===== */
         @media (max-width: 480px) {
             .chat-box {
@@ -634,7 +829,7 @@
                 font-size: 11px;
             }
             .messages {
-                padding: 14px 16px 8px 16px;
+                padding: 14px 14px 8px 14px;
             }
             .msg {
                 font-size: 14px;
@@ -642,22 +837,25 @@
                 max-width: 94%;
             }
             .quick-actions {
-                padding: 6px 16px 10px 16px;
+                padding: 6px 14px 8px 14px;
             }
             .quick-actions button {
                 font-size: 12px;
-                padding: 4px 12px;
+                padding: 4px 11px;
+            }
+            .quote-bar {
+                margin: 6px 14px 0 14px;
             }
             .input-area {
-                padding: 10px 14px 14px 14px;
+                padding: 8px 12px 12px 12px;
                 gap: 8px;
             }
-            .input-area input {
+            .input-area textarea {
                 font-size: 14px;
-                padding: 8px 14px;
+                padding: 8px 12px;
             }
             .input-area button {
-                padding: 8px 18px;
+                padding: 8px 16px;
                 font-size: 13px;
             }
             .modal {
@@ -675,7 +873,7 @@
             <div class="left">
                 <div class="avatar" aria-label="小虾米头像">🦐</div>
                 <div class="info">
-                    <h1>小虾米</h1>
+                    <h1 id="agentName">小虾米</h1>
                     <div class="sub" aria-live="polite">
                         <span class="dot" id="statusDot"></span>
                         <span id="statusText">在线</span>
@@ -684,8 +882,9 @@
                 </div>
             </div>
             <div class="actions">
-                <button id="clearBtn" title="清空对话" aria-label="清空对话">🗑️</button>
+                <button id="envBtn" title="环境能力" aria-label="环境能力">🖥️</button>
                 <button id="manageSkillsBtn" title="管理技能" aria-label="管理技能">⚙️</button>
+                <button id="clearBtn" title="清空对话" aria-label="清空对话">🗑️</button>
             </div>
         </div>
 
@@ -695,15 +894,28 @@
         <!-- 快捷按钮 -->
         <div class="quick-actions" id="quickActions">
             <button data-msg="现在几点">🕐 时间</button>
-            <button data-msg="截个图">📸 截图</button>
-            <button data-msg="打开计算器">🔢 计算器</button>
             <button data-msg="3+5*2 等于多少">🧮 计算</button>
             <button data-msg="你好">👋 打招呼</button>
+            <button data-msg="查看记忆">📚 记忆</button>
+            <button data-msg="列出技能">📜 技能</button>
+            <button data-msg="新增技能：打开记事本">✨ 学新技能</button>
+        </div>
+
+        <!-- 引用条 -->
+        <div class="quote-bar" id="quoteBar" hidden>
+            <span class="q-icon">💬</span>
+            <div class="q-body">
+                <div class="q-label" id="quoteLabel">引用</div>
+                <div class="q-text" id="quoteText"></div>
+            </div>
+            <button id="quoteClose" title="取消引用">✕</button>
         </div>
 
         <!-- 输入区域 -->
         <div class="input-area">
-            <input type="text" id="input" placeholder="输入你的问题…" autofocus />
+            <div class="input-wrap">
+                <textarea id="input" rows="1" placeholder="输入问题…（↑ 键查看发送记录，Shift+Enter 换行）" autofocus></textarea>
+            </div>
             <button id="send">发送</button>
         </div>
 
@@ -719,25 +931,81 @@
                 </div>
             </div>
         </div>
+
+        <!-- 环境能力模态框 -->
+        <div class="modal-overlay" id="envModal">
+            <div class="modal" role="dialog" aria-modal="true" aria-labelledby="envModalTitle">
+                <div class="modal-header">
+                    <h2 id="envModalTitle">🖥️ 环境能力</h2>
+                    <button class="close-btn" id="closeEnvModalBtn">✕</button>
+                </div>
+                <div class="modal-body" id="envBody">
+                    <p style="color:#8a9aae; text-align:center; padding:20px;">加载中…</p>
+                </div>
+            </div>
+        </div>
     </div>
+
+    <div class="toast" id="toast"></div>
 
     <script>
         (function() {
+            'use strict';
+
+            // ===== DOM 引用 =====
             const messagesDiv = document.getElementById('messages');
             const input = document.getElementById('input');
             const sendBtn = document.getElementById('send');
             const statusText = document.getElementById('statusText');
             const statusDot = document.getElementById('statusDot');
             const skillCount = document.getElementById('skillCount');
+            const agentName = document.getElementById('agentName');
             const manageBtn = document.getElementById('manageSkillsBtn');
             const clearBtn = document.getElementById('clearBtn');
+            const envBtn = document.getElementById('envBtn');
             const modal = document.getElementById('skillsModal');
             const closeModalBtn = document.getElementById('closeModalBtn');
             const skillList = document.getElementById('skillList');
+            const envModal = document.getElementById('envModal');
+            const closeEnvModalBtn = document.getElementById('closeEnvModalBtn');
+            const envBody = document.getElementById('envBody');
+            const quoteBar = document.getElementById('quoteBar');
+            const quoteLabel = document.getElementById('quoteLabel');
+            const quoteText = document.getElementById('quoteText');
+            const quoteClose = document.getElementById('quoteClose');
+            const toast = document.getElementById('toast');
 
             let isWaiting = false;
             let skillsCache = {};
+            let quoteState = null;          // { role: 'user'|'bot', content: string }
 
+            // ===== 发送历史（↑↓ 键浏览，localStorage 持久化） =====
+            const HISTORY_KEY = 'shrimp_sent_history';
+            let sentHistory = [];
+            let historyIndex = -1;          // -1 = 未在浏览历史
+            let historyDraft = '';          // 进入历史前保存的草稿
+
+            try {
+                const saved = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+                if (Array.isArray(saved)) sentHistory = saved.filter(s => typeof s === 'string');
+            } catch (e) { /* ignore */ }
+
+            function saveHistory() {
+                try {
+                    localStorage.setItem(HISTORY_KEY, JSON.stringify(sentHistory.slice(-100)));
+                } catch (e) { /* ignore */ }
+            }
+
+            function pushHistory(text) {
+                const last = sentHistory[sentHistory.length - 1];
+                if (last !== text) sentHistory.push(text);
+                if (sentHistory.length > 100) sentHistory.shift();
+                saveHistory();
+                historyIndex = -1;
+                historyDraft = '';
+            }
+
+            // ===== 工具函数 =====
             function setStatus(online, text) {
                 statusText.textContent = text;
                 statusDot.classList.toggle('offline', !online);
@@ -748,18 +1016,59 @@
                     .replace(/&/g, '&amp;')
                     .replace(/</g, '&lt;')
                     .replace(/>/g, '&gt;')
-                    .replace(/\"/g, '&quot;')
+                    .replace(/"/g, '&quot;')
                     .replace(/'/g, '&#39;');
             }
 
+            function nowTime() {
+                return new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+            }
+
+            let toastTimer = null;
+            function showToast(msg) {
+                toast.textContent = msg;
+                toast.classList.add('show');
+                clearTimeout(toastTimer);
+                toastTimer = setTimeout(() => toast.classList.remove('show'), 1600);
+            }
+
+            async function copyText(text) {
+                try {
+                    await navigator.clipboard.writeText(text);
+                    showToast('已复制 📋');
+                } catch (e) {
+                    const ta = document.createElement('textarea');
+                    ta.value = text;
+                    document.body.appendChild(ta);
+                    ta.select();
+                    try {
+                        document.execCommand('copy');
+                        showToast('已复制 📋');
+                    } catch (err) {
+                        showToast('复制失败');
+                    }
+                    document.body.removeChild(ta);
+                }
+            }
+
+            // ===== Markdown 渲染（修复代码块二次转义） =====
             function formatBotMarkdown(text) {
-                let html = escapeHtml(text);
-                html = html.replace(/```([\s\S]*?)```/g, (_, code) => `<pre><code>${escapeHtml(code)}</code></pre>`);
-                html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+                const blocks = [];
+                let html = String(text).replace(/```([\s\S]*?)```/g, (_, code) => {
+                    blocks.push(code);
+                    return '\u0000CODE' + (blocks.length - 1) + '\u0000';
+                });
+                html = escapeHtml(html);
+                html = html.replace(/\u0000CODE(\d+)\u0000/g, (_, i) => `<pre><code>${escapeHtml(blocks[+i])}</code></pre>`);
+                html = html.replace(/`([^`]+)`/g, (_, c) => `<code>${escapeHtml(c)}</code>`);
                 html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
                 html = html.replace(/\[(.+?)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
-                html = html.replace(/\n/g, '<br>');
-                return html;
+                return html.replace(/\n/g, '<br>');
+            }
+
+            function formatQuoteText(text) {
+                const t = String(text).replace(/\s+/g, ' ').trim();
+                return t.length > 160 ? t.slice(0, 160) + '…' : t;
             }
 
             // ===== 更新技能计数 =====
@@ -779,8 +1088,24 @@
                 }
             }
 
+            // ===== 引用 =====
+            function setQuote(role, content) {
+                quoteState = { role: role, content: String(content) };
+                quoteLabel.textContent = role === 'user' ? '引用你的消息' : '引用小虾米的回答';
+                quoteText.textContent = formatQuoteText(content);
+                quoteBar.hidden = false;
+                input.focus();
+            }
+
+            function clearQuote() {
+                quoteState = null;
+                quoteBar.hidden = true;
+            }
+
+            quoteClose.addEventListener('click', clearQuote);
+
             // ===== 消息渲染 =====
-            function renderMessage(text, isUser) {
+            function renderMessage(text, isUser, quote) {
                 const div = document.createElement('div');
                 div.className = `msg ${isUser ? 'user' : 'bot'}`;
 
@@ -795,6 +1120,22 @@
                     }
                 }
 
+                // 引用块
+                if (quote && quote.content) {
+                    const q = document.createElement('div');
+                    q.className = 'quote';
+                    const qLabel = document.createElement('div');
+                    qLabel.className = 'quote-label';
+                    qLabel.textContent = quote.role === 'user' ? '引用你的消息' : '引用小虾米的回答';
+                    const qBody = document.createElement('div');
+                    qBody.className = 'quote-body';
+                    qBody.innerHTML = escapeHtml(formatQuoteText(quote.content)).replace(/\n/g, '<br>');
+                    q.appendChild(qLabel);
+                    q.appendChild(qBody);
+                    div.appendChild(q);
+                }
+
+                // 正文（兼容截图 data URL）
                 const screenshotRegex = /!\[screenshot\]\(data:image\/png;base64,([^)]+)\)/g;
                 const matches = Array.from(String(text).matchAll(screenshotRegex));
 
@@ -820,12 +1161,39 @@
                     div.appendChild(p);
                 }
 
+                // 元信息：时间 + 操作（复制 / 引用）
+                const meta = document.createElement('div');
+                meta.className = 'meta';
+                const time = document.createElement('span');
+                time.className = 'time';
+                time.textContent = nowTime();
+
+                const actions = document.createElement('span');
+                actions.className = 'msg-actions';
+                const copyBtn = document.createElement('button');
+                copyBtn.textContent = '复制';
+                copyBtn.title = '复制消息';
+                copyBtn.addEventListener('click', (e) => { e.stopPropagation(); copyText(text); });
+                const quoteBtn = document.createElement('button');
+                quoteBtn.textContent = '引用';
+                quoteBtn.title = '引用这条消息';
+                quoteBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    setQuote(isUser ? 'user' : 'bot', text);
+                });
+                actions.appendChild(copyBtn);
+                actions.appendChild(quoteBtn);
+
+                meta.appendChild(time);
+                meta.appendChild(actions);
+                div.appendChild(meta);
+
                 messagesDiv.appendChild(div);
                 messagesDiv.scrollTop = messagesDiv.scrollHeight;
             }
 
-            function addMessage(text, isUser) {
-                renderMessage(text, isUser);
+            function addMessage(text, isUser, quote) {
+                renderMessage(text, isUser, quote);
             }
 
             function showTyping() {
@@ -852,6 +1220,17 @@
                 if (el) el.remove();
             }
 
+            // ===== 输入框自适应高度 =====
+            function autoResize() {
+                input.style.height = 'auto';
+                input.style.height = Math.min(input.scrollHeight, 140) + 'px';
+            }
+            input.addEventListener('input', () => {
+                autoResize();
+                // 手动输入时退出历史浏览
+                if (historyIndex !== -1) historyIndex = -1;
+            });
+
             // ===== 发送消息 =====
             async function sendMessage() {
                 const text = input.value.trim();
@@ -863,8 +1242,14 @@
                 statusText.textContent = '思考中…';
                 statusDot.classList.remove('offline');
 
-                addMessage(text, true);
+                const quote = quoteState ? { role: quoteState.role, content: quoteState.content } : null;
+
+                addMessage(text, true, quote);
+                pushHistory(text);
+
                 input.value = '';
+                autoResize();
+                clearQuote();
                 input.focus();
 
                 showTyping();
@@ -873,7 +1258,7 @@
                     const response = await fetch('/chat', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ message: text })
+                        body: JSON.stringify({ message: text, quote: quote })
                     });
 
                     const data = await response.json();
@@ -905,6 +1290,7 @@
                 while (messagesDiv.firstChild) {
                     messagesDiv.removeChild(messagesDiv.firstChild);
                 }
+                clearQuote();
                 setTimeout(() => {
                     addMessage('你好！我是小虾米，很高兴为你服务。', false);
                 }, 200);
@@ -914,7 +1300,7 @@
             function renderSkills() {
                 const names = Object.keys(skillsCache);
                 if (names.length === 0) {
-                    skillList.innerHTML = '<p style="color:#8a9aae;text-align:center;padding:20px;">暂无技能</p>';
+                    skillList.innerHTML = '<p style="color:#8a9aae;text-align:center;padding:20px;">暂无技能<br><span style="font-size:12px;">对小虾米说「新增技能：XXX」即可学习</span></p>';
                     return;
                 }
 
@@ -930,7 +1316,7 @@
                                 <div class="desc">${safeDesc}</div>
                             </div>
                             <label class="switch">
-                                <input type="checkbox" checked disabled data-name="${safeName}">
+                                <input type="checkbox" checked data-name="${safeName}">
                                 <span class="slider"></span>
                             </label>
                         </div>
@@ -938,6 +1324,37 @@
                 });
                 skillList.innerHTML = html;
             }
+
+            skillList.addEventListener('change', async (e) => {
+                const checkbox = e.target.closest('.switch input');
+                if (!checkbox) return;
+                const name = checkbox.dataset.name;
+                const enabled = checkbox.checked;
+                try {
+                    const res = await fetch('/skills/toggle', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ skill_name: name, enabled: enabled })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        if (!enabled) {
+                            delete skillsCache[name];
+                            showToast(`已禁用 ${name}`);
+                        } else {
+                            showToast(`已启用 ${name}`);
+                        }
+                        renderSkills();
+                        updateSkillCount();
+                    } else {
+                        checkbox.checked = !enabled;
+                        showToast(data.error || '操作失败');
+                    }
+                } catch (err) {
+                    checkbox.checked = !enabled;
+                    showToast('网络错误');
+                }
+            });
 
             function openModal() {
                 modal.classList.add('active');
@@ -955,6 +1372,42 @@
                 if (e.target === modal) closeModal();
             });
 
+            // ===== 环境能力 =====
+            function renderEnv(caps) {
+                const rows = [
+                    ['平台', caps.platform || '未知'],
+                    ['Python', caps.python || '未知'],
+                    ['联网', caps.network ? '✅ 可联网' : '❌ 离线'],
+                    ['舵机', (caps.actuators || []).length > 0 ? `${caps.actuators.length} 个` : '无'],
+                    ['屏幕', caps.display ? '有' : '无'],
+                    ['麦克风', caps.audio_in ? '有' : '无'],
+                    ['喇叭', caps.audio_out ? '有' : '无'],
+                    ['可用库', (caps.libs || []).join(', ') || '无'],
+                    ['来源', caps.source || 'probe']
+                ];
+                envBody.innerHTML = rows.map(([k, v]) =>
+                    `<div class="env-row"><span class="k">${escapeHtml(k)}</span><span class="v">${escapeHtml(v)}</span></div>`
+                ).join('');
+            }
+
+            async function openEnvModal() {
+                envModal.classList.add('active');
+                envBody.innerHTML = '<p style="color:#8a9aae;text-align:center;padding:20px;">加载中…</p>';
+                try {
+                    const res = await fetch('/environment');
+                    const data = await res.json();
+                    renderEnv(data.capabilities || {});
+                } catch {
+                    envBody.innerHTML = '<p style="color:#ff7d7d;text-align:center;padding:20px;">无法获取环境信息</p>';
+                }
+            }
+
+            envBtn.addEventListener('click', openEnvModal);
+            closeEnvModalBtn.addEventListener('click', () => envModal.classList.remove('active'));
+            envModal.addEventListener('click', (e) => {
+                if (e.target === envModal) envModal.classList.remove('active');
+            });
+
             // ===== 事件绑定 =====
             clearBtn.addEventListener('click', () => {
                 if (confirm('确定要清空所有对话吗？')) {
@@ -963,16 +1416,56 @@
             });
 
             sendBtn.addEventListener('click', sendMessage);
+
+            // 键盘事件：Enter 发送 / Shift+Enter 换行 / ↑↓ 浏览历史
             input.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') {
+                // 中文输入法组合期间不拦截
+                if (e.isComposing || e.keyCode === 229) return;
+
+                if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
                     sendMessage();
+                    return;
+                }
+
+                if (e.key === 'ArrowUp') {
+                    const firstNl = input.value.indexOf('\n');
+                    const atFirstLine = firstNl === -1 || input.selectionStart <= firstNl;
+                    if (!atFirstLine || sentHistory.length === 0) return;
+                    e.preventDefault();
+                    if (historyIndex === -1) historyDraft = input.value;
+                    if (historyIndex < sentHistory.length - 1) {
+                        historyIndex++;
+                        input.value = sentHistory[sentHistory.length - 1 - historyIndex];
+                        input.setSelectionRange(input.value.length, input.value.length);
+                        autoResize();
+                    }
+                    return;
+                }
+
+                if (e.key === 'ArrowDown') {
+                    const lastNl = input.value.lastIndexOf('\n');
+                    const atLastLine = lastNl === -1 || input.selectionStart > lastNl;
+                    if (!atLastLine || sentHistory.length === 0) return;
+                    e.preventDefault();
+                    if (historyIndex > 0) {
+                        historyIndex--;
+                        input.value = sentHistory[sentHistory.length - 1 - historyIndex];
+                    } else if (historyIndex === 0) {
+                        historyIndex = -1;
+                        input.value = historyDraft;
+                    } else {
+                        return;
+                    }
+                    input.setSelectionRange(input.value.length, input.value.length);
+                    autoResize();
                 }
             });
 
             document.querySelectorAll('.quick-actions button').forEach(btn => {
                 btn.addEventListener('click', () => {
                     input.value = btn.getAttribute('data-msg');
+                    autoResize();
                     sendMessage();
                 });
             });
@@ -980,7 +1473,16 @@
             // ===== 初始化 =====
             updateSkillCount();
             setTimeout(() => {
-                addMessage('你好！我是小虾米。\n我可以帮你计算、截图、回答问题，还能根据你的需求自动生成新功能。\n试试输入 "现在几点" 或 "3+5等于多少" 吧！', false);
+                addMessage(
+                    '你好！我是小虾米 🦐\n\n目前是**最简状态**：\n' +
+                    '• 聊天问答 · 记住你的事情（名字/偏好/事实）\n' +
+                    '• 想让我学新技能，说「新增技能：XXX」\n' +
+                    '• 技能出错我会自己修复\n\n' +
+                    '💡 小技巧：\n' +
+                    '• 把鼠标移到消息上可以**复制 / 引用**回答\n' +
+                    '• 按 **↑ ↓ 键** 浏览你发送过的消息记录',
+                    false
+                );
             }, 300);
 
             input.focus();
