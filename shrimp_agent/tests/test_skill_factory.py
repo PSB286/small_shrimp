@@ -153,6 +153,74 @@ def test_suggest_upgrades_offline():
         settings.api_key = old
 
 
+def test_sandbox_test_good():
+    """沙箱冒烟测试：正常技能通过，且外部调用被打桩不真正执行"""
+    code = '''import subprocess
+
+def demo(param: str = ''):
+    try:
+        subprocess.Popen(['notepad.exe'])
+        return "已打开" + param
+    except Exception as e:
+        return "失败" + str(e)
+'''
+    r = skill_factory.sandbox_test(code)
+    assert r["ok"], r
+    assert len(r["returns"]) == 2
+    assert "已打开" in r["returns"][0]
+    assert "subprocess.Popen" in r["calls"]  # 打桩记录，未真正执行
+
+
+def test_sandbox_test_broken():
+    """沙箱冒烟测试：运行时错误被捕获"""
+    code = '''def bad(param: str = ''):
+    raise RuntimeError("模拟崩溃")
+'''
+    r = skill_factory.sandbox_test(code)
+    assert not r["ok"]
+    assert "模拟崩溃" in r["error"]
+
+
+def test_sandbox_test_non_string_return():
+    """返回值必须是字符串"""
+    code = '''def bad(param: str = ''):
+    return 123
+'''
+    r = skill_factory.sandbox_test(code)
+    assert not r["ok"]
+    assert "不是字符串" in r["error"]
+
+
+def test_polish_offline():
+    """无 LLM 且代码有问题 → polish 返回 None（不硬造）"""
+    old = settings.api_key
+    settings.api_key = "sk-xxx"
+    try:
+        bad = '''def broken(param: str = ''):
+    raise RuntimeError("x")
+'''
+        code, rounds, log = skill_factory.polish_skill_code(bad, "测试", {}, max_rounds=1)
+        assert code is None
+        assert rounds == 0
+    finally:
+        settings.api_key = old
+
+
+def test_polish_good_no_llm_needed():
+    """代码本来就健康 → 不需要 LLM，直接通过"""
+    old = settings.api_key
+    settings.api_key = "sk-xxx"
+    try:
+        good = '''def ok(param: str = ''):
+    return "结果" + param
+'''
+        code, rounds, log = skill_factory.polish_skill_code(good, "测试", {}, max_rounds=1)
+        assert code is not None
+        assert rounds == 0
+    finally:
+        settings.api_key = old
+
+
 if __name__ == "__main__":
     test_templates_empty()
     test_available_templates_empty()
@@ -167,4 +235,9 @@ if __name__ == "__main__":
     test_find_similar_skills()
     test_strip_code_fence()
     test_suggest_upgrades_offline()
+    test_sandbox_test_good()
+    test_sandbox_test_broken()
+    test_sandbox_test_non_string_return()
+    test_polish_offline()
+    test_polish_good_no_llm_needed()
     print("✅ skill_factory 测试通过")

@@ -74,6 +74,13 @@
       ],
       "skill": "show_current_date",
       "description": "显示系统当前日期，并在记事本中展示"
+    },
+    {
+      "keywords": [
+        "获取电脑当前磁盘剩余空间"
+      ],
+      "skill": "get_disk_space",
+      "description": "获取电脑各磁盘的剩余空间和总空间信息"
     }
   ],
   "auto_create": true,

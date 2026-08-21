@@ -121,6 +121,33 @@ class CapabilityChecker:
                 elif attr == "speaker" and not self._has_speaker:
                     violations.append("本环境没有喇叭设备，不能调用 hw.speaker()")
 
+        # 4. 反模式检查（让初版技能更成熟）
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef):
+                # 函数必须至少有一个 return
+                has_return = any(isinstance(n, ast.Return) for n in ast.walk(node))
+                if not has_return:
+                    violations.append("函数 %s 没有 return，技能必须返回结果字符串" % node.name)
+            elif isinstance(node, ast.While):
+                # while True 且没有 break/return → 死循环风险
+                if isinstance(node.test, ast.Constant) and node.test.value is True:
+                    has_exit = any(
+                        isinstance(n, (ast.Break, ast.Return))
+                        for n in ast.walk(node)
+                    )
+                    if not has_exit:
+                        violations.append("存在 while True 且无 break/return，有死循环风险")
+            elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+                # 危险调用：eval / exec
+                if node.func.id in ("eval", "exec"):
+                    warnings.append("使用了 %s()，存在安全隐患，建议避免" % node.func.id)
+
+        # 5. 危险系统调用提示（不拦截，但提醒）
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+                if node.value.id == "os" and node.attr in ("system", "popen"):
+                    warnings.append("使用了 os.%s()，建议改用 subprocess（更安全可控）" % node.attr)
+
         return {"ok": not violations, "violations": violations, "warnings": warnings}
 
     # ---------- 辅助 ----------

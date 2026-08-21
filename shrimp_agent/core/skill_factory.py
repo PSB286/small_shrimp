@@ -151,6 +151,208 @@ def sanitize_filename(name, fallback="new_skill"):
     return name
 
 
+# ==================== 技能成熟度保障：沙箱冒烟测试 + 自打磨 ====================
+
+def sandbox_test(code, capabilities=None, timeout=5):
+    """
+    沙箱冒烟测试：加载技能函数，把外部调用（os.system/os.startfile/subprocess/网络）
+    打桩（sys.modules + os 属性临时替换），验证技能能正常返回字符串、不抛异常、不死循环。
+    返回 {"ok": bool, "error": str, "returns": [str], "calls": [str]}
+    """
+    import sys
+    import types
+    import threading
+
+    calls = []
+
+    def _stub(name):
+        def fn(*a, **k):
+            calls.append(name)
+            return "模拟结果"
+        return fn
+
+    class _FakePopen:
+        def __init__(self, *a, **k):
+            calls.append("subprocess.Popen")
+        def communicate(self, *a, **k):
+            calls.append("subprocess.communicate")
+            return (b"", b"")
+        def wait(self, *a, **k):
+            return 0
+        def poll(self, *a, **k):
+            return 0
+
+    class _FakeSubprocess:
+        Popen = _FakePopen
+        def run(self, *a, **k):
+            calls.append("subprocess.run")
+            return _FakePopen()
+        def call(self, *a, **k):
+            calls.append("subprocess.call")
+            return 0
+        def check_call(self, *a, **k):
+            calls.append("subprocess.check_call")
+            return 0
+
+    class _FakeRequests:
+        def get(self, *a, **k):
+            calls.append("requests.get")
+            return types.SimpleNamespace(status_code=200, text="模拟响应",
+                                         json=lambda: {"ok": True})
+        def post(self, *a, **k):
+            calls.append("requests.post")
+            return types.SimpleNamespace(status_code=200, text="模拟响应",
+                                         json=lambda: {"ok": True})
+
+    class _FakeSocket:
+        def create_connection(self, *a, **k):
+            calls.append("socket.create_connection")
+            return _FakePopen()
+        def socket(self, *a, **k):
+            calls.append("socket.socket")
+            return _FakePopen()
+
+    import os as _real_os
+
+    # ---- 临时打桩（try/finally 保证恢复）----
+    saved_modules = {}
+    for name, fake in [("subprocess", _FakeSubprocess()),
+                       ("requests", _FakeRequests()),
+                       ("socket", _FakeSocket())]:
+        saved_modules[name] = sys.modules.get(name)
+        sys.modules[name] = fake
+
+    saved_os_fns = {}
+    for fn in ("system", "startfile", "popen"):
+        if hasattr(_real_os, fn):
+            saved_os_fns[fn] = getattr(_real_os, fn)
+            setattr(_real_os, fn, _stub("os." + fn))
+
+    try:
+        namespace = {"__name__": "_sandbox_skill", "time": __import__("time")}
+        exec(compile(code, "<sandbox>", "exec"), namespace)
+    except Exception as e:
+        result = {"ok": False, "error": "加载失败: %s" % e, "returns": [], "calls": calls}
+    else:
+        # 找到技能函数（第一个定义在沙箱里的函数）
+        func = None
+        for name, obj in namespace.items():
+            if isinstance(obj, type(lambda: 0)) and getattr(obj, "__module__", "") == "_sandbox_skill":
+                func = obj
+                break
+        if func is None:
+            result = {"ok": False, "error": "未找到技能函数", "returns": [], "calls": calls}
+        else:
+            returns = []
+            result = None
+            for p in ["", "沙箱测试内容"]:
+                box = {}
+
+                def _run():
+                    try:
+                        box["value"] = func(p)
+                    except Exception as e:
+                        box["error"] = str(e)
+                    finally:
+                        box["done"] = True
+
+                t = threading.Thread(target=_run, daemon=True)
+                t.start()
+                t.join(timeout)
+                if not box.get("done"):
+                    result = {"ok": False, "error": "执行超时（可能死循环），参数=%r" % p,
+                              "returns": returns, "calls": calls}
+                    break
+                if "error" in box:
+                    result = {"ok": False, "error": "执行报错: %s（参数=%r）" % (box["error"], p),
+                              "returns": returns, "calls": calls}
+                    break
+                value = box.get("value")
+                if not isinstance(value, str):
+                    result = {"ok": False, "error": "返回值不是字符串: %r（参数=%r）" % (value, p),
+                              "returns": returns, "calls": calls}
+                    break
+                returns.append(value)
+            if result is None:
+                result = {"ok": True, "error": "", "returns": returns, "calls": calls}
+    finally:
+        for name, saved in saved_modules.items():
+            if saved is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = saved
+        for fn, saved in saved_os_fns.items():
+            setattr(_real_os, fn, saved)
+
+    return result
+
+
+def polish_skill_code(code, description, capabilities, max_rounds=2):
+    """
+    技能自打磨：静态校验 + 沙箱冒烟测试，失败则 LLM 修复并重测。
+    返回 (final_code, rounds_used, log) ；彻底失败返回 (None, rounds, log)
+    """
+    check = validate_code(code, capabilities)
+    if not check["ok"]:
+        errors = check["violations"]
+    else:
+        test = sandbox_test(code, capabilities)
+        errors = [test["error"]] if not test["ok"] else []
+
+    if not errors:
+        return code, 0, ["静态校验与冒烟测试全部通过"]
+
+    if not _llm_available():
+        return None, 0, ["无 LLM 可用，无法自修复"] + errors
+
+    cloud = CloudEngine()
+    log = []
+    current = code
+    for round_no in range(1, max_rounds + 1):
+        log.append("第 %d 轮修复: %s" % (round_no, errors[0][:120]))
+        system = (
+            "你是小虾米的技能打磨器。技能代码有问题，请修复并输出完整代码。\n\n"
+            "【环境能力清单】\n%s\n\n"
+            "规则：\n"
+            "1. 保持函数名和功能不变\n"
+            "2. 修复列出的问题，并让技能更成熟：处理空参数、try/except 捕获异常、"
+            "返回清晰的中文结果、不要死循环、不要 eval/exec\n"
+            "3. 只输出 Python 代码，不要解释，不要 markdown 代码块"
+            % json.dumps(capabilities, ensure_ascii=False, indent=2)
+        )
+        user = "【技能代码】\n%s\n\n【发现的问题】\n%s\n\n请输出修复后的完整代码。" % (
+            current, "\n".join(errors[:8]))
+        try:
+            result = cloud.chat([
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ])
+            text = ""
+            if isinstance(result, dict):
+                text = result.get("answer", "")
+            elif isinstance(result, str):
+                text = result
+            fixed = _strip_code_fence(text)
+            if not fixed or len(fixed) < 30:
+                errors = ["修复输出为空"]
+                continue
+            current = fixed
+            check = validate_code(current, capabilities)
+            if not check["ok"]:
+                errors = check["violations"]
+                continue
+            test = sandbox_test(current, capabilities)
+            if test["ok"]:
+                log.append("第 %d 轮修复后通过 ✅" % round_no)
+                return current, round_no, log
+            errors = [test["error"]]
+        except Exception as e:
+            errors = ["修复调用异常: %s" % e]
+
+    log.append("多次修复仍未通过: %s" % errors[0])
+    return None, max_rounds, log
+
+
 # ==================== 相似技能整合 ====================
 
 # 常见动作词/修饰词：去掉它们后剩下的就是"目标物"（如 记事本）
@@ -233,10 +435,14 @@ def merge_skills(existing_name, existing_code, new_desc, new_code, capabilities)
         code = _strip_code_fence(code)
         if not code or len(code) < 30:
             return None
-        # 校验合并结果：语法 + 能力约束
+        # 校验合并结果：静态校验 + 沙箱冒烟测试
         check = validate_code(code, capabilities)
         if not check["ok"]:
             logger.info("[Factory] 合并结果未通过校验: %s", check["violations"][:3])
+            return None
+        test = sandbox_test(code, capabilities)
+        if not test["ok"]:
+            logger.info("[Factory] 合并结果冒烟测试失败: %s", test["error"][:120])
             return None
         # 确认函数名仍是原技能名
         func_name = extract_skill_info(code)[0]
@@ -335,6 +541,10 @@ def enhance_skill(existing_name, existing_code, instructions, capabilities):
         if not check["ok"]:
             logger.info("[Factory] 增强结果未通过校验: %s", check["violations"][:3])
             return None
+        test = sandbox_test(code, capabilities)
+        if not test["ok"]:
+            logger.info("[Factory] 增强结果冒烟测试失败: %s", test["error"][:120])
+            return None
         func_name = extract_skill_info(code)[0]
         if func_name != existing_name:
             logger.info("[Factory] 增强后函数名变了 (%s -> %s)，拒绝", existing_name, func_name)
@@ -375,6 +585,13 @@ def _build_generation_prompt(capabilities, description, history=None, round_no=1
         "技能内部用关键词判断动作（如写入/读取/清空/打开）并提取内容，返回字符串结果",
         "6. 必须包含 __skill_meta__ = {\"description\": \"...\", \"params\": {...}}",
         "7. 只输出 Python 代码，不要解释，不要用 markdown 代码块",
+        "",
+        "【成熟度要求（让初版就能用）】",
+        "8. 处理 param 为空/无内容的情况（给出友好提示）",
+        "9. 用 try/except 捕获异常，失败返回清晰的中文错误信息",
+        "10. 不要写死循环（while True 必须有 break/return）",
+        "11. 不要用 eval/exec；尽量用 subprocess 而非 os.system",
+        "12. 返回结果必须是字符串，且对用户有明确意义",
     ]
     if previous_errors:
         lines.append("")

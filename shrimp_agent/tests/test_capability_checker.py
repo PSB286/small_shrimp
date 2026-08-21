@@ -109,6 +109,39 @@ def test_syntax_error():
     assert any("语法" in v for v in r["violations"])
 
 
+def test_while_true_rejected():
+    """死循环反模式：while True 无 break/return 必须拦截"""
+    code = '''def loop():
+    while True:
+        pass
+'''
+    r = CapabilityChecker({}).check(code)
+    assert not r["ok"]
+    assert any("死循环" in v for v in r["violations"])
+
+
+def test_no_return_rejected():
+    """无 return 的函数必须拦截"""
+    code = '''def noreturn():
+    x = 1
+'''
+    r = CapabilityChecker({}).check(code)
+    assert not r["ok"]
+    assert any("return" in v for v in r["violations"])
+
+
+def test_while_with_break_ok():
+    """有 break 的 while True 放行"""
+    code = '''def okloop():
+    while True:
+        if "停" in "停":
+            break
+    return "ok"
+'''
+    r = CapabilityChecker({}).check(code)
+    assert r["ok"], r
+
+
 if __name__ == "__main__":
     test_good_passes()
     test_unknown_servo_rejected()
@@ -117,4 +150,7 @@ if __name__ == "__main__":
     test_display_wrong_call_rejected()
     test_pose_servo_rejected()
     test_syntax_error()
+    test_while_true_rejected()
+    test_no_return_rejected()
+    test_while_with_break_ok()
     print("✅ capability_checker 测试通过")

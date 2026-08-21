@@ -388,7 +388,22 @@ class AgentLoop:
         skill_code, skill_name, skill_desc, msgs = result
         skill_name = sanitize_filename(skill_name, "new_skill")
 
-        # 3. 相似技能整合：已有类似技能时，合并进去而不是创建重复
+        # 3. 技能自打磨：静态反模式检查 + 沙箱冒烟测试，失败自动修复（让初版就能用）
+        from core.skill_factory import polish_skill_code
+        final_code, polish_rounds, polish_log = polish_skill_code(
+            skill_code, skill_desc, self.capabilities)
+        if final_code is None:
+            logger.warning("[Agent] 技能自打磨失败: %s", polish_log)
+            return (
+                "❌ 技能未能通过自动打磨（初版有运行时问题，自动修复也未成功）。\n\n"
+                f"📋 最后问题：{polish_log[-1] if polish_log else '未知'}\n\n"
+                "建议换个更具体的描述再试，或说「新增技能：...」重新生成。"
+            )
+        if polish_rounds > 0:
+            skill_code = final_code
+            msgs = [f"自动打磨 {polish_rounds} 轮后通过"]
+
+        # 4. 相似技能整合：已有类似技能时，合并进去而不是创建重复
         from core.skill_factory import find_similar_skills, merge_skills
         similar = find_similar_skills(description, self.skills.get_skills_info())
         if similar:
