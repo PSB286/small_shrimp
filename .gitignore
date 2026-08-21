@@ -1,0 +1,31 @@
+# ===== 环境与密钥 =====
+.env
+.env.local
+*.env
+
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+
+# ===== IDE =====
+.idea/
+.vscode/
+*.swp
+
+# ===== 虚拟环境 =====
+venv/
+.venv/
+
+# ===== 运行时数据（用户数据不入库） =====
+shrimp_agent/logs/
+shrimp_agent/.backups/
+shrimp_agent/skills/.backups/
+shrimp_agent/memory/*.json
+shrimp_agent/data/capabilities.json
+shrimp_agent/data/optimize_audit.json
+shrimp_agent/updates/
+*.disabled

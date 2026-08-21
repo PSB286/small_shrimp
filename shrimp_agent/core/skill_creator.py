@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Dict, Optional, Tuple
 from config import settings
 from utils.logger import logger
-from llm.cloud_engine import CloudLLM
+from llm.cloud_engine import CloudEngine
 
 
 class SkillCreator:
@@ -20,7 +20,7 @@ class SkillCreator:
     def __init__(self):
         self.skills_dir = settings.skills_dir
         self.templates_file = os.path.join(settings.skills_dir, "..", "data", "skill_templates.json")
-        self.cloud = CloudLLM()
+        self.cloud = CloudEngine()
         self._ensure_templates()
         
     def _ensure_templates(self):
@@ -137,7 +137,7 @@ def {name}(action, path, content=None):
 如果不需要创建新技能，返回 {{"should_create": false, "reason": "原因"}}
 """
         try:
-            response = self.cloud.chat(prompt, [])
+            response = self.cloud.chat(prompt)
             # 解析响应
             if isinstance(response, dict):
                 return response
@@ -184,7 +184,7 @@ def {name}(action, path, content=None):
         
         # 使用 AI 生成
         try:
-            response = self.cloud.chat(prompt, [])
+            response = self.cloud.chat(prompt)
             if isinstance(response, str):
                 # 清理代码
                 code = response.strip()
