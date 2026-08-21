@@ -161,12 +161,17 @@ def open_notepad(param: str = ''):
         _open_memo()
         return "记事本已打开，并成功写入：%s（文件路径：%s）" % (content, _MEMO_FILE)
 
-    # 5. 打开记事本（报告路径）
+    # 5. 关闭记事本（不写内容）
+    if any(k in req for k in ["关闭", "关掉", "退出", "关一下", "关掉记事本", "关闭窗口"]):
+        subprocess.run(["taskkill", "/f", "/im", "notepad.exe"], capture_output=True)
+        return "记事本已关闭"
+
+    # 6. 打开记事本（报告路径）
     if not req or any(k in req for k in ["打开", "开一下", "启动", "开启"]):
         _open_memo()
         return "记事本已打开（文件路径：%s）" % _MEMO_FILE
 
-    # 6. 默认：把请求当作要写入的内容
+    # 7. 默认：把请求当作要写入的内容
     _write_content(req)
     _open_memo()
     return "记事本已写入：%s（文件路径：%s）" % (req, _MEMO_FILE)

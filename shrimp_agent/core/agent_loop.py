@@ -209,10 +209,14 @@ class AgentLoop:
             logger.info(f"[SkillMatch] No exact match for target '{target}'")
 
         # 自然语言匹配（本地确定性执行，不依赖云端）：
-        # 输入同时含"技能目标词"和"动作词" → 直接执行，把完整请求传给技能解析
+        # 输入同时含"技能目标词"和"动作词" → 计算意图权重，权重达标才执行
         for skill_name, info in self.skills.skills.items():
             if self._natural_language_skill_match(user_input_clean, skill_name, info):
-                logger.info(f"[SkillMatch] NL match: {skill_name} <- '{user_input_clean}'")
+                weight = self._intent_weight(user_input_clean, skill_name)
+                if weight < 2:
+                    logger.info(f"[SkillMatch] 意图权重不足({weight})，交给云端/增强: '{user_input_clean}'")
+                    return None
+                logger.info(f"[SkillMatch] NL match(权重{weight}): {skill_name} <- '{user_input_clean}'")
                 return self._execute_skill(skill_name, {"param": user_input_clean})
 
         # 对话连续性：输入以动作词开头且没提到任何目标词 →
@@ -320,6 +324,40 @@ class AgentLoop:
             f"B. 只写入其中诗的部分\n"
             f"C. 其他（请说明你的要求）\n\n取消说「取消」。"
         )
+
+    def _intent_weight(self, user_input: str, skill_name: str) -> int:
+        """
+        命令意图权重：判断"该不该执行技能"。
+        结合：请求结构（短/命令式 → 加分，讨论式 → 减分）
+             + 短期记忆（最近用过的技能 → 加分，延续性）
+             + 长期记忆（技能历史成功率高 → 加分，信任度）
+        权重 < 2 → 不执行，交给云端/增强流程（避免误解讨论为命令）。
+        """
+        text = (user_input or "").strip()
+        w = 0
+
+        # 结构信号：短句 + 命令词开头 → 命令
+        if len(text) <= 16:
+            w += 1
+        if re.match(r'^(?:帮我|请|麻烦)?\s*(?:打开|运行|启动|执行|使用|关闭|关掉|退出|读取|读|看看|查看|清空|清除|追加|写入|写上|写|打印|显示)\s*', text):
+            w += 3
+        elif len(text) > 8:
+            w -= 1
+
+        # 讨论/元语句信号（"优化/功能/问题/需要…" → 不是命令）
+        if any(k in text for k in ["优化", "增强", "升级", "功能", "问题", "需要", "修改", "调整", "应该", "为什么", "怎么"]):
+            w -= 4
+
+        # 短期记忆：延续最近用过的技能 → 加分
+        if skill_name == self.last_skill:
+            w += 1
+
+        # 长期记忆：技能历史成功率 ≥80% 且用过 ≥3 次 → 加分（信任该技能）
+        stats = self.permanent_memory.get_skill_stats(skill_name)
+        if stats.get("count", 0) >= 3 and (stats.get("success", 0) / max(stats.get("count", 1), 1)) >= 0.8:
+            w += 1
+
+        return w
 
     def _natural_language_skill_match(self, user_input: str, skill_name: str, info: dict) -> bool:
         """输入同时提到技能目标物和动作词 → 判定为执行意图"""
@@ -681,9 +719,14 @@ class AgentLoop:
 
     def _is_enhance_skill_query(self, user_input: str) -> bool:
         """识别增强/优化技能意图（多种说法）"""
-        if "技能" not in user_input:
-            return False
-        return any(k in user_input for k in ["增强", "升级", "扩展", "完善", "优化", "改进", "改一下", "调整"])
+        if "技能" in user_input and any(k in user_input for k in ["增强", "升级", "扩展", "完善", "优化", "改进", "改一下", "调整"]):
+            return True
+        # "X的功能需要优化一下" / "X的功能有问题需要改" / "优化一下X的功能"
+        if re.search(r'(?:功能|用法)\s*(?:需要|有点|有些)?\s*(?:优化|增强|升级|改进|完善|调整|修改|改一下)', user_input):
+            return True
+        if re.search(r'(?:优化|增强|升级|改进|完善|调整|修改)\s*(?:一下)?\s*(?:这个|那个)?\s*\S{0,8}\s*(?:功能|用法)', user_input):
+            return True
+        return False
 
     def _resolve_skill_name(self, user_input: str) -> str:
         """从用户话里解析技能名：显式名字 → 目标名词 → 最近用过的技能"""
@@ -709,11 +752,17 @@ class AgentLoop:
         """提取增强指令：去掉'技能...优化一下'这类前缀，剩下的是要加的功能"""
         # 去掉开头的不满/描述部分，取"优化/增强/改进..."之后的内容
         m = re.search(r'(?:优化|增强|升级|扩展|完善|改进)(?:一下|一下)?[，,：:\s]*([^。]*。?.*)', user_input, re.DOTALL)
+        instructions = ""
         if m:
-            return m.group(1).strip()
-        # 兜底：去前缀
-        text = re.sub(r'^(?:你的|这个|那个|这些)?(?:技能)?\w*?(?:还是)?(?:有点|有些|存在)?(?:问题|毛病)[，,：:\s]*', '', user_input)
-        return text.strip()
+            instructions = m.group(1).strip()
+        else:
+            # 兜底：去前缀
+            text = re.sub(r'^(?:你的|这个|那个|这些)?(?:技能)?\w*?(?:还是)?(?:有点|有些|存在)?(?:问题|毛病)[，,：:\s]*', '', user_input)
+            instructions = text.strip()
+        # "没有关闭"/"没生效" 这类抱怨 → 转成修复指令
+        if any(k in instructions for k in ["没有", "没生效", "未生效", "不好用", "不生效"]):
+            instructions = "修复该功能（%s）" % instructions
+        return instructions
 
     def _handle_enhance_skill(self, user_input: str) -> str:
         """
@@ -751,7 +800,11 @@ class AgentLoop:
 
         result = enhance_skill(skill_name, existing_code, instructions, self.capabilities)
         if not result:
-            return f"❌ 增强失败：AI 未能产出可用的增强代码，请换个说法再试。"
+            return (
+                f"⚠️ 无法自动修改这个技能（AI 没能安全地生成增强代码，已放弃且未改动原技能）。\n"
+                f"📦 {skill_name} 当前功能：{desc or '未知'}\n\n"
+                f"请更具体地说要加什么，例如：「增强技能 {skill_name}：关闭时同时清空内容」。"
+            )
         new_code, new_desc = result
 
         # 备份 → 写入 → 热重载

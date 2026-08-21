@@ -595,41 +595,56 @@ def enhance_skill(existing_name, existing_code, instructions, capabilities):
         "4. import 只能用标准库/清单库/hardware\n"
         "5. 函数接收 param: str = ''（param 是用户的完整请求文本，技能内部用关键词判断动作并提取内容）\n"
         "6. 保留并更新 __skill_meta__ 的 description\n"
-        "7. 只输出 Python 代码，不要解释，不要 markdown 代码块"
+        "7. 已有技能中以下划线开头（_xxx）的辅助函数：保持原样，不要改它们的签名和调用方式\n"
+        "8. 只输出 Python 代码，不要解释，不要 markdown 代码块"
         % (caps_json, existing_name)
     )
     user = "【已有技能代码】\n%s\n\n【增强指令】\n%s\n\n请输出增强后的完整代码。" % (existing_code, instructions)
-    try:
-        cloud = CloudEngine()
-        result = cloud.chat([
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ])
-        code = ""
-        if isinstance(result, dict):
-            code = result.get("answer", "")
-        elif isinstance(result, str):
-            code = result
-        code = _strip_code_fence(code)
-        if not code or len(code) < 30:
-            return None
-        check = validate_code(code, capabilities)
-        if not check["ok"]:
-            logger.info("[Factory] 增强结果未通过校验: %s", check["violations"][:3])
-            return None
-        test = sandbox_test(code, capabilities)
-        if not test["ok"]:
-            logger.info("[Factory] 增强结果冒烟测试失败: %s", test["error"][:120])
-            return None
-        func_name = extract_skill_info(code)[0]
-        if func_name != existing_name:
-            logger.info("[Factory] 增强后函数名变了 (%s -> %s)，拒绝", existing_name, func_name)
-            return None
-        desc = extract_skill_info(code)[1] or ""
-        return code, desc
-    except Exception as e:
-        logger.warning("[Factory] 增强调用失败: %s", e)
-        return None
+    # 增强最多尝试 2 轮：失败把校验/冒烟测试错误喂回重试
+    errors = []
+    for attempt in range(1, 3):
+        try:
+            if errors:
+                user = (
+                    "【已有技能代码】\n%s\n\n【增强指令】\n%s\n\n"
+                    "【上一轮增强结果的问题】\n%s\n\n请修复并输出增强后的完整代码。"
+                    % (existing_code, instructions, "\n".join(errors))
+                )
+            cloud = CloudEngine()
+            result = cloud.chat([
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ])
+            code = ""
+            if isinstance(result, dict):
+                code = result.get("answer", "")
+            elif isinstance(result, str):
+                code = result
+            code = _strip_code_fence(code)
+            if not code or len(code) < 30:
+                errors = ["增强输出为空"]
+                continue
+            check = validate_code(code, capabilities)
+            if not check["ok"]:
+                logger.info("[Factory] 增强第 %d 轮未通过校验: %s", attempt, check["violations"][:3])
+                errors = check["violations"]
+                continue
+            test = sandbox_test(code, capabilities)
+            if not test["ok"]:
+                logger.info("[Factory] 增强第 %d 轮冒烟测试失败: %s", attempt, test["error"][:120])
+                errors = [test["error"]]
+                continue
+            func_name = extract_skill_info(code)[0]
+            if func_name != existing_name:
+                logger.info("[Factory] 增强后函数名变了 (%s -> %s)，拒绝", existing_name, func_name)
+                errors = ["函数名必须是 %s" % existing_name]
+                continue
+            desc = extract_skill_info(code)[1] or ""
+            return code, desc
+        except Exception as e:
+            logger.warning("[Factory] 增强调用失败: %s", e)
+            errors = ["增强调用异常: %s" % e]
+    return None
 
 
 # ==================== LLM 迭代生成 ====================
