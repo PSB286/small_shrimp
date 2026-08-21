@@ -717,6 +717,29 @@ class AgentLoop:
             pass
         return "\n".join(lines)
 
+    def _enhancement_covered(self, skill_name: str, instructions: str, desc: str) -> bool:
+        """
+        判断要增强的功能是否已被技能覆盖（命中即不跑 LLM 重写，避免反复失败）。
+        规则：去掉请求里的修饰词后，若剩余关键词出现在技能描述中 → 已具备。
+        """
+        if not instructions or not desc:
+            return False
+        stopwords = [
+            "可以", "按要求", "按我的", "更改", "调整", "需要", "修改", "一下",
+            "的", "我", "你", "这个", "那个", "里面", "让", "把", "将", "能",
+            "会", "吗", "了", "同时", "再", "也", "请", "帮我", "能够", "进行",
+            "功能", "增加", "添加", "支持", "要求", "变成", "设为", "设置成",
+        ]
+        text = instructions
+        for w in sorted(stopwords, key=len, reverse=True):
+            text = text.replace(w, "")
+        chunks = re.findall(r'[\u4e00-\u9fff]{2,6}', text)
+        for c in chunks:
+            if c and c in desc:
+                logger.info(f"[Agent] 增强请求「{c}」已被技能覆盖，跳过 LLM 重写")
+                return True
+        return False
+
     def _is_enhance_skill_query(self, user_input: str) -> bool:
         """识别增强/优化技能意图（多种说法）"""
         if "技能" in user_input and any(k in user_input for k in ["增强", "升级", "扩展", "完善", "优化", "改进", "改一下", "调整"]):
@@ -797,6 +820,13 @@ class AgentLoop:
             if not suggestions:
                 return f"请具体说明要增强什么，例如：'增强技能 {skill_name}：追加写入同一个记事本'"
             instructions = "；".join(f"{s.get('title', '')}（{s.get('detail', '')}）" for s in suggestions[:3])
+
+        # 已具备该功能？不跑易失败的 LLM 重写，直接告知
+        if self._enhancement_covered(skill_name, instructions, desc):
+            return (
+                f"ℹ️ 这个功能 **{skill_name}** 已经具备了：{desc}\n\n"
+                f"直接说「执行{skill_name}」使用；想加**新**功能就说「增强技能 {skill_name}：具体功能」。"
+            )
 
         result = enhance_skill(skill_name, existing_code, instructions, self.capabilities)
         if not result:

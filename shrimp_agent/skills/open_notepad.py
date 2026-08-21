@@ -4,11 +4,11 @@ import subprocess
 import tempfile
 
 __skill_meta__ = {
-    "description": "Windows 记事本管理：打开、写入、追加、读取、清空、打印文件路径",
+    "description": "Windows 记事本管理：打开、写入、追加、读取、清空、打印文件路径、格式化内容",
     "params": {
         "param": {
             "type": "string",
-            "description": "用户的完整请求（如'写入 你好'、'读取'、'清空'、'追加 xx'、'打印路径'、'打开'）"
+            "description": "用户的完整请求（如'写入 你好'、'读取'、'清空'、'追加 xx'、'格式化内容'、'打印路径'、'关闭'、'打开'）"
         }
     },
     "tier": 2
@@ -50,6 +50,14 @@ def _append_content(content):
     if existing and not existing.endswith("\n"):
         existing += "\n"
     _write_content(existing + content)
+
+
+def _format_content(text):
+    """格式化内容：合并多余空白，按中文句子标点分行，清理空行"""
+    text = re.sub(r'\s+', ' ', text).strip()          # 合并连续空白
+    text = re.sub(r'([。！？；])\s*', r'\1\n', text)    # 句子标点后换行
+    lines = [l.strip() for l in text.split("\n") if l.strip()]
+    return "\n".join(lines)
 
 
 def _strip_action(req, action_words):
@@ -139,6 +147,16 @@ def open_notepad(param: str = ''):
     if any(k in req for k in ["清空", "清除", "清掉", "清一下", "清空内容", "删除内容", "删掉内容", "删掉"]):
         _write_content("")
         return "记事本内容已清空（文件路径：%s）" % _MEMO_FILE
+
+    # 2.5 格式化内容（按句子分行排版，写回并打开）
+    if any(k in req for k in ["格式化", "调整格式", "整理格式", "排版", "重新排版", "整理一下", "规范格式"]):
+        content = _read_content()
+        if not content:
+            return "记事本内容为空，没什么可格式化的"
+        formatted = _format_content(content)
+        _write_content(formatted)
+        _open_memo()
+        return "已格式化排版：\n%s（文件路径：%s）" % (formatted, _MEMO_FILE)
 
     # 3. 追加内容（打开窗口展示）
     if any(k in req for k in _APPEND_ACTIONS):
