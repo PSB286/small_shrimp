@@ -17,6 +17,17 @@ __skill_meta__ = {
 # 固定的记忆文件：同一个记事本内容跨会话保留，所有操作都基于这个路径
 _MEMO_FILE = os.path.join(tempfile.gettempdir(), "shrimp_notepad.txt")
 
+# 位置/对象短语：先剥离（长短语优先，避免残留"中/在里面"）
+_LOCATION_PHRASES = [
+    "在这个记事本中", "在这个记事本里", "在这个记事本",
+    "在记事本中", "在记事本里", "记事本里面", "记事本里",
+    "在里面", "进去", "这个记事本", "当前记事本", "记事本", "当前",
+]
+
+# 动作词：后剥离（长优先，避免"写"误伤"写字"）
+_WRITE_ACTIONS = ["写一下", "写入", "写上", "记下", "记录", "改成", "写"]
+_APPEND_ACTIONS = ["在后面加", "接着写", "后面写", "加上", "追加"]
+
 
 def _read_content():
     if not os.path.exists(_MEMO_FILE):
@@ -33,9 +44,13 @@ def _write_content(content):
         f.write(content)
 
 
-def _strip_action(req, pattern):
-    """去掉动作词，提取要写入的内容"""
-    text = re.sub(pattern, "", req)
+def _strip_action(req, action_words):
+    """提取内容：先剥位置短语，再按长度降序剥动作词，最后清理标点"""
+    text = req
+    for phrase in _LOCATION_PHRASES:
+        text = text.replace(phrase, "")
+    for w in sorted(action_words, key=len, reverse=True):
+        text = text.replace(w, "")
     return text.strip(" ，。！!？?：:、\n\t")
 
 
@@ -78,8 +93,8 @@ def open_notepad(param: str = ''):
         return "记事本内容已清空（文件路径：%s）" % _MEMO_FILE
 
     # 3. 追加内容（打开窗口展示）
-    if any(k in req for k in ["追加", "在后面加", "接着写", "后面写", "加上"]):
-        content = _strip_action(req, r"在这个记事本|在记事本中|在记事本里|记事本|追加|在后面加|接着写|后面写|加上|内容|文字")
+    if any(k in req for k in _APPEND_ACTIONS):
+        content = _strip_action(req, _APPEND_ACTIONS + ["内容", "文字"])
         if not content:
             return "请告诉我要追加什么内容"
         _write_content(_read_content() + content)
@@ -87,8 +102,8 @@ def open_notepad(param: str = ''):
         return "已追加到记事本：%s（文件路径：%s）" % (content, _MEMO_FILE)
 
     # 4. 写入内容（覆盖，打开窗口展示）
-    if any(k in req for k in ["写入", "写上", "写", "记下", "记录", "改成"]):
-        content = _strip_action(req, r"在这个记事本|在记事本中|在记事本里|记事本|写入|写上|写|记下|记录|改成|内容|文字")
+    if any(k in req for k in _WRITE_ACTIONS):
+        content = _strip_action(req, _WRITE_ACTIONS + ["内容", "文字"])
         if not content:
             return "请告诉我要写入什么内容"
         _write_content(content)
