@@ -194,6 +194,11 @@ class AgentLoop:
         if any(k in user_input_clean for k in ["无需", "不要", "别", "不用", "别再", "不要再", "不需要"]):
             return None
 
+        # 引用上一条消息写入技能（"把刚才的诗写到记事本"）
+        referenced = self._resolve_write_reference(user_input_clean, history or [])
+        if referenced:
+            return referenced
+
         action_match = re.match(r'^(?:打开|运行|启动|执行|使用)\s*(.+)$', user_input_clean)
         if action_match:
             target = action_match.group(1).strip()
@@ -226,7 +231,7 @@ class AgentLoop:
     # 常见动作词（与技能目标词共同出现时判定为执行意图）
     _ACTION_VERBS = [
         "打开", "运行", "启动", "执行", "使用", "写入", "写上", "写一下", "写",
-        "读取", "读一下", "读出来", "读", "清空", "清除", "清掉", "追加",
+        "读取", "读一下", "读出来", "读", "看看", "查看", "清空", "清除", "清掉", "追加",
         "记录", "保存", "删除", "设置", "改成", "计算", "搜索", "查询",
         "显示", "播放", "发送", "生成", "创建", "关闭", "说出", "告诉",
         "打印", "查看", "路径",
@@ -236,6 +241,39 @@ class AgentLoop:
     _COVER_ACTIONS = [
         "打开", "写入", "读取", "清空", "追加", "打印", "显示", "删除", "搜索", "计算",
     ]
+
+    def _resolve_write_reference(self, user_input: str, history: list):
+        """
+        解析"把X写到记事本"类引用：X 是模糊引用（诗/内容/回答/刚才的…）
+        时，取上一条助手消息内容，原样写入目标技能（__RAW__ 协议）。
+        返回执行结果或 None（不是引用请求）。
+        """
+        m = re.search(
+            r'(?:把|将)\s*(?:这个|刚才|上面|上一条|刚刚|那个)?\s*([^写\n]+?)\s*(?:写到|写进|写入|存到|放进|加进|记录到)\s*(\S+)',
+            user_input
+        )
+        if not m:
+            return None
+        ref = m.group(1).strip().strip("的")
+        # 只有模糊引用才取上一条消息；具体内容（如"测试123"）交给技能正常处理
+        if not ref or not any(k in ref for k in ["内容", "诗", "回答", "回复", "消息", "这段话", "文字", "东西", "前面", "刚才"]):
+            return None
+        last_bot = ""
+        for msg in reversed(history or []):
+            if msg.get("role") == "assistant":
+                last_bot = msg.get("content", "") or ""
+                break
+        if not last_bot:
+            return None
+        # 找到目标技能（按目标名词匹配，如"记事本"→open_notepad）
+        target = m.group(2).strip()
+        from core.skill_factory import extract_target
+        for name, info in self.skills.skills.items():
+            t = extract_target(info.get("description", "") or "")
+            if len(t) >= 2 and t in target:
+                logger.info(f"[Agent] 引用上一条消息写入技能 {name}")
+                return self._execute_skill(name, {"param": "__RAW__:" + last_bot})
+        return None
 
     def _natural_language_skill_match(self, user_input: str, skill_name: str, info: dict) -> bool:
         """输入同时提到技能目标物和动作词 → 判定为执行意图"""
@@ -761,7 +799,7 @@ class AgentLoop:
                 content = self._generate_creative_content(topic)
                 if not content or content.startswith("[创作失败]"):
                     return content or "❌ 创作失败，请稍后再试。"
-                return self._execute_skill("open_notepad", {"param": content})
+                return self._execute_skill("open_notepad", {"param": "__RAW__:" + content})
             if re.fullmatch(r'[bB]', text) or any(k in text for k in ["文字", "字面", "原样", "几个字"]):
                 self.pending_ask = None
                 return self._execute_skill("open_notepad", {"param": topic})

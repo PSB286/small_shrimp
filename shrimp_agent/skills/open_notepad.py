@@ -96,12 +96,19 @@ def open_notepad(param: str = ''):
     """
     req = (param or '').strip()
 
+    # 0.5 原文写入协议：Agent 传入 __RAW__:内容 → 原样写入（不解析动作，防诗词含"写"字被误剥）
+    if req.startswith("__RAW__:"):
+        content = req[len("__RAW__:"):].strip()
+        _write_content(content)
+        _open_memo()
+        return "记事本已打开，并成功写入：%s（文件路径：%s）" % (content, _MEMO_FILE)
+
     # 0. 打印/显示文件路径（优先级最高，避免"打印路径"被当成其他动作）
     if "路径" in req and any(k in req for k in ["打印", "显示", "查看", "查", "告诉", "是什么", "在哪", "哪里"]):
         return "记事本文件路径：%s" % _MEMO_FILE
 
     # 1. 读取内容（不打开窗口，避免反复弹窗）
-    if any(k in req for k in ["读取", "读一下", "看看内容", "内容是什么", "读出来", "读一遍"]):
+    if any(k in req for k in ["读取", "读一下", "看看", "查看", "看下", "瞧", "内容是什么", "读出来", "读一遍"]):
         content = _read_content()
         if content:
             return "记事本内容：\n%s\n（文件路径：%s）" % (content, _MEMO_FILE)
