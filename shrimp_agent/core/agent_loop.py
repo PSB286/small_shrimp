@@ -238,7 +238,7 @@ class AgentLoop:
         "读取", "读一下", "读出来", "读", "看看", "查看", "清空", "清除", "清掉", "追加",
         "记录", "保存", "删除", "设置", "改成", "计算", "搜索", "查询",
         "显示", "播放", "发送", "生成", "创建", "关闭", "说出", "告诉",
-        "打印", "查看", "路径",
+        "打印", "查看", "路径", "比价",
     ]
 
     # 判断已有技能是否已覆盖学习目标时用到的动作词
@@ -364,15 +364,15 @@ class AgentLoop:
         from core.skill_factory import extract_target
         desc = info.get("description", "") or ""
         target = extract_target(desc)
-        if len(target) < 2:
-            return False
-        # 输入必须包含技能的目标名词
-        if target not in user_input:
-            return False
-        # 且包含一个动作词
-        if not any(v in user_input for v in self._ACTION_VERBS):
-            return False
-        return True
+        has_action = any(v in user_input for v in self._ACTION_VERBS)
+        # 目标名词 + 动作词
+        if len(target) >= 2 and target in user_input and has_action:
+            return True
+        # 价格搜索类（比价/搜索 + 技能描述涉及价格）：目标词可能是"比价"这类动词，
+        # 直接按 比价/搜索 触发，避免误走云端（云端会编造假数据）
+        if ("比价" in user_input or "搜索" in user_input) and ("比价" in desc or "价格" in desc):
+            return True
+        return False
 
     def _skill_target_matches(self, target: str, skill_name: str, info: dict) -> bool:
         # 去掉目标词开头的动作前缀（如"执行打开记事本" → "记事本"）
@@ -849,6 +849,11 @@ class AgentLoop:
                 f"直接说「执行{skill_name}」使用；想加**新**功能就说「增强技能 {skill_name}：具体功能」。"
             )
 
+        # 多需求拆分：一次只增强一个功能（小改动成功率高），逐个累加
+        features = [p.strip() for p in re.split(r'[；;。\n·•]', instructions) if len(p.strip()) >= 2]
+        if len(features) > 1:
+            return self._enhance_sequential(skill_name, existing_code, desc, features)
+
         result = enhance_skill(skill_name, existing_code, instructions, self.capabilities)
         if not result:
             return (
@@ -858,7 +863,41 @@ class AgentLoop:
             )
         new_code, new_desc = result
 
-        # 备份 → 写入 → 热重载
+        return self._apply_enhancement(skill_name, new_code, new_desc, instructions)
+
+    def _enhance_sequential(self, skill_name, current_code, current_desc, features):
+        """多需求逐个增强：每个功能单独一次LLM增强，逐步累加（已具备的跳过）"""
+        applied = []
+        failed = []
+        for feat in features:
+            # 该功能技能已具备 → 跳过，不白跑 LLM
+            if self._enhancement_covered(skill_name, feat, current_desc):
+                applied.append(feat + "（已具备）")
+                continue
+            from core.skill_factory import enhance_skill
+            result = enhance_skill(skill_name, current_code, feat, self.capabilities)
+            if not result:
+                failed.append(feat)
+                logger.warning(f"[Agent] 增强「{feat}」失败，已跳过")
+                continue
+            current_code, current_desc = result
+            applied.append(feat)
+
+        if not applied:
+            return (
+                f"⚠️ 多个增强需求都失败了（AI 没能安全地生成代码，未改动原技能）。\n"
+                f"📦 {skill_name} 当前功能：{current_desc or '未知'}\n\n"
+                f"请拆开描述，一次说一个功能，例如：「增强技能 {skill_name}：增加价格区间筛选」。"
+            )
+        self._apply_enhancement(skill_name, current_code, current_desc, "；".join(applied))
+        msg = f"✅ **已分 {len(applied)} 步完成增强！**\n\n📦 {skill_name}：{current_desc}\n完成：{'；'.join(applied)}"
+        if failed:
+            msg += f"\n\n⚠️ 以下需求未能自动实现：{'；'.join(failed)}\n（可拆开单独再试，或说「增强技能 {skill_name}：具体功能」）"
+        msg += "\n\n旧版已备份到 .backups，随时可说「修复技能 %s」回退。" % skill_name
+        return msg
+
+    def _apply_enhancement(self, skill_name, new_code, new_desc, summary):
+        """把增强结果写入技能文件并热重载"""
         backup_dir = os.path.join(self.skills.skills_dir, ".backups")
         os.makedirs(backup_dir, exist_ok=True)
         import shutil as _shutil
@@ -871,12 +910,12 @@ class AgentLoop:
         self.skills.reload_skills()
         self.cloud.set_skills_info(self.skills.get_skills_info())
         self._update_memory_context()
-        self.permanent_memory.add_fact(f"增强了技能 {skill_name}：{instructions}", "skills")
+        self.permanent_memory.add_fact(f"增强了技能 {skill_name}：{summary}", "skills")
 
         return (
             f"✅ **技能已增强！**\n\n"
             f"📦 {skill_name}：{new_desc}\n"
-            f"新增能力：{instructions}\n\n"
+            f"新增能力：{summary}\n\n"
             f"旧版已备份到 .backups，随时可说「修复技能 {skill_name}」回退。"
         )
 

@@ -102,6 +102,13 @@
       ],
       "skill": "open_calculator_with_input",
       "description": "打开Windows计算器并模拟输入数学表达式进行计算，支持加(+)减(-)乘(*)除(/)等基本运算"
+    },
+    {
+      "keywords": [
+        "比价助手"
+      ],
+      "skill": "compare_prices",
+      "description": "比价助手：搜索并对比淘宝、闲鱼、京东等平台的价格，帮助用户发现差价空间"
     }
   ],
   "auto_create": true,
