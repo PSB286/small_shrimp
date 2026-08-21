@@ -95,6 +95,13 @@
       ],
       "skill": "open_paint",
       "description": "Windows画图程序操作：打开画图、新建画图文件、保存画布为图片文件"
+    },
+    {
+      "keywords": [
+        "点按计算器，并整合到计算机功能"
+      ],
+      "skill": "open_calculator_with_input",
+      "description": "打开Windows计算器并模拟输入数学表达式进行计算，支持加(+)减(-)乘(*)除(/)等基本运算"
     }
   ],
   "auto_create": true,

@@ -549,16 +549,36 @@ class AgentLoop:
         return any(p in user_input for p in patterns)
 
     def _is_delete_skill_query(self, user_input: str) -> bool:
-        return re.search(r'删除\s*技能\s*(\w+)', user_input) is not None
+        # "删除技能 X" 或 删除动词 + 已知技能名（支持多个/粘贴格式）
+        if re.search(r'(?:删除|删掉|移除|去掉|卸掉)\s*技能\s*(\w+)', user_input):
+            return True
+        if re.search(r'(?:删除|删掉|移除|去掉|卸掉)', user_input):
+            return len(self._extract_skill_names(user_input)) > 0
+        return False
+
+    def _extract_skill_names(self, user_input: str) -> list:
+        """从消息中找出提到且真实存在的技能名（支持多个、粘贴"📦 技能名 : 描述"格式）"""
+        found = []
+        for name in self.skills.skills.keys():
+            if re.search(r'(?<![a-zA-Z0-9_])' + re.escape(name) + r'(?![a-zA-Z0-9_])', user_input):
+                found.append(name)
+        return found
 
     def _handle_delete_skill(self, user_input: str) -> str:
-        match = re.search(r'删除\s*技能\s*(\w+)', user_input)
-        if match:
-            skill_name = match.group(1)
+        names = self._extract_skill_names(user_input)
+        m = re.search(r'(?:删除|删掉|移除|去掉|卸掉)\s*技能\s*(\w+)', user_input)
+        if m and m.group(1) not in names:
+            names.append(m.group(1))
+        if not names:
+            return "请指定要删除的技能名称，例如：'删除技能 open_calculator'"
+
+        results = []
+        for skill_name in names:
             self.matcher.remove_mapping(skill_name)
             self.permanent_memory.reset_skill_stats(skill_name)
-            return self.skills.delete_skill(skill_name)
-        return "请指定要删除的技能名称，例如：'删除技能 calculator'"
+            results.append(self.skills.delete_skill(skill_name))
+        logger.info(f"[Agent] 删除技能: {names}")
+        return "\n".join(results)
 
     def _is_create_skill_query(self, user_input: str) -> bool:
         patterns = [r'新增\s*技能', r'增加\s*技能', r'创建\s*技能', r'添加\s*技能', r'生成\s*技能', r'帮我.*技能']
@@ -1067,9 +1087,10 @@ class AgentLoop:
 3. 如果用户想学新东西（如"我想让你学会跳舞"），引导说"新增技能：跳舞"
 4. 如果用户说"你好"或"hi"，热情回应
 5. 直接输出自然语言，不要输出JSON格式
-6. 你【不能直接修改/更新技能文件】。如果用户要求改技能（如"改用cmd方式"、
-   "优化一下技能"），引导他说「增强技能 技能名：要加的功能」或「学习技能：材料…」，
-   【绝对不要声称"技能已更新/已修改完成"】——你只能通过 __EXEC__ 执行技能，
+6. 你【不能直接修改/删除技能文件】。如果用户要求改技能（如"改用cmd方式"、
+   "优化一下技能"），引导他说「增强技能 技能名：要加的功能」或「学习技能：材料…」；
+   如果用户要求删除技能，引导他说「删除技能 技能名」。
+   【绝对不要声称"技能已更新/已修改/已删除完成"】——你只能通过 __EXEC__ 执行技能，
    不能改技能本身。
 
 【对话上下文（会话内短暂记忆，重要）】
