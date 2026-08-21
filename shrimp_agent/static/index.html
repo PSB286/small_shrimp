@@ -1084,7 +1084,15 @@
                     <button class="close-btn" id="closeAddSkillBtn">✕</button>
                 </div>
                 <div class="modal-body">
-                    <div class="add-skill-hint">选一个模板，或直接描述你的需求，先预览再确认添加：</div>
+                    <div class="add-skill-hint">📖 <b>学习模式</b>：填三要素自动生成；或选模板 / 直接描述需求</div>
+                    <div style="display:flex;gap:6px;margin-bottom:8px;">
+                        <input class="add-input" id="learnMaterial" placeholder="材料（如：电脑记事本）" style="flex:1;margin-bottom:0;" />
+                    </div>
+                    <div style="display:flex;gap:6px;margin-bottom:8px;">
+                        <input class="add-input" id="learnContent" placeholder="学习内容（如：使用记事本）" style="flex:1;margin-bottom:0;" />
+                        <input class="add-input" id="learnLevel" placeholder="程度（了解/基本使用/熟练/完全掌握）" style="flex:1;margin-bottom:0;" />
+                    </div>
+                    <div class="add-skill-hint" style="margin-top:-4px;">或选模板 / 自由描述：</div>
                     <div class="template-grid" id="templateGrid"></div>
                     <input class="add-input" id="addSkillInput" placeholder="描述你的技能需求，如：获取电脑磁盘剩余空间" />
                     <div class="preview-box" id="previewBox">
@@ -1594,6 +1602,9 @@
             let selectedTemplate = null;   // 当前选中的模板名
             let previewTimer = null;
             let previewSeq = 0;
+            const learnMaterial = document.getElementById('learnMaterial');
+            const learnContent = document.getElementById('learnContent');
+            const learnLevel = document.getElementById('learnLevel');
 
             async function openAddSkillModal() {
                 addSkillModal.classList.add('active');
@@ -1620,6 +1631,9 @@
                 addRegenBtn.style.display = 'none';
                 addConfirmBtn.disabled = true;
                 addSkillInput.value = '';
+                learnMaterial.value = '';
+                learnContent.value = '';
+                learnLevel.value = '';
             }
 
             templateGrid.addEventListener('click', (e) => {
@@ -1640,10 +1654,28 @@
                     preview();
                 }
             });
+            // 学习模式：三要素任一填写 → 自动预览（组合成描述）
+            [learnMaterial, learnContent, learnLevel].forEach(el => {
+                el.addEventListener('input', () => {
+                    clearTimeout(previewTimer);
+                    previewTimer = setTimeout(preview, 600);
+                });
+            });
 
             async function preview() {
+                const m = learnMaterial.value.trim();
+                const c = learnContent.value.trim();
+                const l = learnLevel.value.trim();
                 const description = addSkillInput.value.trim();
-                const body = selectedTemplate ? { template: selectedTemplate } : (description ? { description } : null);
+                let body = null;
+                if (selectedTemplate) {
+                    body = { template: selectedTemplate };
+                } else if (m || c || l) {
+                    // 学习模式：把三要素组合成描述
+                    body = { description: `目标材料：${m}。学习内容：${c}。学习程度：${l || '完全掌握'}` };
+                } else if (description) {
+                    body = { description };
+                }
                 if (!body) return;
                 const seq = ++previewSeq;
                 try {

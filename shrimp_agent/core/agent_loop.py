@@ -106,10 +106,65 @@ class AgentLoop:
         return [
             (self._is_list_skills_query, lambda: self.skills.list_skills_formatted()),
             (self._is_delete_skill_query, lambda: self._handle_delete_skill(user_input)),
+            (self._is_learn_skill_query, lambda: self._handle_learn_skill(user_input, history)),
             (self._is_create_skill_query, lambda: self._handle_create_skill(user_input, history)),
             (self._is_fix_skill_query, lambda: self._handle_fix_skill(user_input)),
             (self._is_enhance_skill_query, lambda: self._handle_enhance_skill(user_input)),
         ]
+
+    # ================================================================
+    # 学习技能（三要素：材料 / 学习内容 / 学习程度）
+    # ================================================================
+
+    def _is_learn_skill_query(self, user_input: str) -> bool:
+        """识别学习技能意图：'学习技能...' 或 同时提到 材料+学习内容/程度"""
+        if re.search(r'(?:学习|学会)\s*技能', user_input):
+            return True
+        return "材料" in user_input and any(k in user_input for k in ["学习内容", "要学习到", "学习程度", "学到什么程度"])
+
+    def _handle_learn_skill(self, user_input: str, history: list) -> str:
+        """学习技能：收集 材料/学习内容/学习程度 三要素 → 生成技能"""
+        from core.skill_factory import parse_learning_fields, build_learning_description
+        fields = parse_learning_fields(user_input)
+        missing = [k for k in ("material", "content", "level") if not fields.get(k)]
+        if missing:
+            names = {"material": "材料", "content": "学习内容", "level": "要学习到的程度"}
+            return (
+                "📋 **学习技能需要你提供 3 个基本要素：**\n\n"
+                "  • **材料**：要学习的对象（如：电脑记事本）\n"
+                "  • **学习内容**：要学什么（如：使用记事本）\n"
+                "  • **要学习到什么程度**：了解 / 基本使用 / 熟练 / 完全掌握\n\n"
+                f"你还需要补充：**{'、'.join(names[m] for m in missing)}**\n\n"
+                "可以一次性说：\n"
+                "「学习技能：材料：电脑记事本，学习内容：使用记事本，要学习到：完全掌握」"
+            )
+
+        description = build_learning_description(
+            fields["material"], fields["content"], fields["level"]
+        )
+
+        # 预检：已有技能是否已覆盖学习目标（避免白跑生成/合并）
+        from core.skill_factory import find_similar_skills
+        similar = find_similar_skills(description, self.skills.get_skills_info())
+        if similar:
+            existing_name = similar[0]
+            existing_desc = self.skills.get_skills_info().get(existing_name, {}).get("description", "")
+            covered = sum(1 for a in self._COVER_ACTIONS if a in existing_desc)
+            if covered >= 3:
+                return (
+                    f"ℹ️ 这个技能你已经**学会了**：`{existing_name}` 已具备这些能力：\n"
+                    f"  📦 {existing_name}：{existing_desc}\n\n"
+                    f"可以直接说「执行{existing_name}」使用；\n"
+                    f"想加新功能就说「增强技能 {existing_name}：要加的功能」。"
+                )
+            if self.skills.skill_exists(existing_name):
+                # 已有技能但覆盖不足 → 直接增强它到目标程度，而不是新建
+                return self._handle_enhance_skill(
+                    f"增强技能 {existing_name}：按『{description}』的要求补全功能，学习程度要达到 {fields['level']}"
+                )
+
+        # 复用完整创建流程：生成 → 自打磨 → 相似整合 → 创建 → 能力推荐
+        return self._handle_create_skill(f"新增技能：{description}", history)
 
     # ================================================================
     # 技能匹配与执行（核心）
@@ -164,6 +219,11 @@ class AgentLoop:
         "记录", "保存", "删除", "设置", "改成", "计算", "搜索", "查询",
         "显示", "播放", "发送", "生成", "创建", "关闭", "说出", "告诉",
         "打印", "查看", "路径",
+    ]
+
+    # 判断已有技能是否已覆盖学习目标时用到的动作词
+    _COVER_ACTIONS = [
+        "打开", "写入", "读取", "清空", "追加", "打印", "显示", "删除", "搜索", "计算",
     ]
 
     def _natural_language_skill_match(self, user_input: str, skill_name: str, info: dict) -> bool:
@@ -452,8 +512,19 @@ class AgentLoop:
                         f"现在可以说「{description}」直接使用（旧版已备份到 .backups）。"
                         f"{suggestions}"
                     )
-                # 合并失败 → 退回创建新技能
-                logger.warning("[Agent] 技能 %s 合并失败，创建独立技能", skill_name)
+                # 合并失败 → 检查已有技能是否已覆盖学习目标：是则不创建重复
+                logger.warning("[Agent] 技能 %s 合并失败，检查已有技能覆盖度", existing_name)
+                existing_desc = self.skills.get_skills_info().get(existing_name, {}).get("description", "")
+                covered = sum(1 for a in self._COVER_ACTIONS if a in existing_desc)
+                if covered >= 3:
+                    return (
+                        f"ℹ️ 这个技能你已经**学会了**：`{existing_name}` 已具备这些能力：\n"
+                        f"  📦 {existing_name}：{existing_desc}\n\n"
+                        f"可以直接说「执行{existing_name}」使用；\n"
+                        f"想加新功能就说「增强技能 {existing_name}：要加的功能」。"
+                    )
+                # 已有技能覆盖不足 → 退回创建独立技能
+                logger.warning("[Agent] 已有技能覆盖不足，创建独立技能 %s", skill_name)
 
         skills_dir = self.skills.skills_dir
         if not os.path.exists(skills_dir):

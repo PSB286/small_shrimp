@@ -124,7 +124,9 @@ class CapabilityChecker:
         # 4. 反模式检查（让初版技能更成熟）
         for node in ast.walk(tree):
             if isinstance(node, ast.FunctionDef):
-                # 函数必须至少有一个 return
+                # 主技能函数必须至少有一个 return（下划线开头的辅助函数不要求）
+                if node.name.startswith("_"):
+                    continue
                 has_return = any(isinstance(n, ast.Return) for n in ast.walk(node))
                 if not has_return:
                     violations.append("函数 %s 没有 return，技能必须返回结果字符串" % node.name)

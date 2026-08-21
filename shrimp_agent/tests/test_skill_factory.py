@@ -228,6 +228,35 @@ def test_polish_good_no_llm_needed():
         settings.api_key = old
 
 
+def test_parse_learning_fields():
+    """学习技能三要素解析"""
+    msg = "学习技能：材料：电脑记事本，学习内容：使用记事本，要学习到：完全掌握"
+    fields = skill_factory.parse_learning_fields(msg)
+    assert fields.get("material") == "电脑记事本"
+    assert fields.get("content") == "使用记事本"
+    assert fields.get("level") == "完全掌握"
+    # 缺失字段不返回
+    partial = skill_factory.parse_learning_fields("材料：电脑记事本")
+    assert "material" in partial
+    assert "content" not in partial
+    assert "level" not in partial
+
+
+def test_build_learning_description():
+    """三要素 → 生成描述（含完整度要求）"""
+    desc = skill_factory.build_learning_description("电脑记事本", "使用记事本", "完全掌握")
+    assert "电脑记事本" in desc
+    assert "使用记事本" in desc
+    assert "完全掌握" in desc
+    assert "开箱即用" in desc  # 完全掌握的要求
+    # 未知名程度 → 默认完全掌握
+    desc2 = skill_factory.build_learning_description("a", "b", "随便")
+    assert "开箱即用" in desc2
+    # 目标词提取：学习描述中能提取出"记事本"（用于相似技能检测）
+    from core.skill_factory import extract_target
+    assert extract_target(desc) == "记事本"
+
+
 if __name__ == "__main__":
     test_templates_present()
     test_available_templates_by_capability()
@@ -247,4 +276,6 @@ if __name__ == "__main__":
     test_sandbox_test_non_string_return()
     test_polish_offline()
     test_polish_good_no_llm_needed()
+    test_parse_learning_fields()
+    test_build_learning_description()
     print("✅ skill_factory 测试通过")

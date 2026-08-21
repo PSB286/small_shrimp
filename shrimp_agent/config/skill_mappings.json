@@ -81,6 +81,20 @@
       ],
       "skill": "get_disk_space",
       "description": "获取电脑各磁盘的剩余空间和总空间信息"
+    },
+    {
+      "keywords": [
+        "目标材料：电脑记事本"
+      ],
+      "skill": "open_notepad_2",
+      "description": "打开 Windows 记事本程序"
+    },
+    {
+      "keywords": [
+        "目标材料：Windows画图程序"
+      ],
+      "skill": "open_paint",
+      "description": "Windows画图程序操作：打开画图、新建画图文件、保存画布为图片文件"
     }
   ],
   "auto_create": true,

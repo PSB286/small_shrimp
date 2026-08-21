@@ -371,6 +371,41 @@ def polish_skill_code(code, description, capabilities, max_rounds=2):
     return None, max_rounds, log
 
 
+# ==================== 学习技能三要素 ====================
+
+# 学习程度 → 生成要求（决定技能的完整度）
+LEVEL_REQUIREMENTS = {
+    "了解": "实现最基本的功能即可，能完成核心操作",
+    "基本使用": "实现核心常用功能，覆盖主要操作",
+    "熟练": "覆盖全部常见使用场景，处理好常见边界情况",
+    "完全掌握": "尽可能覆盖该材料的全部常见使用方式、所有主要功能、边界情况与异常处理，做到开箱即用",
+}
+
+
+def parse_learning_fields(user_input):
+    """
+    从用户话中解析学习技能三要素：材料 / 学习内容 / 学习程度。
+    返回 {"material", "content", "level"}（缺失的字段不存在）。
+    """
+    result = {}
+    patterns = [
+        (r'材料[:：]?\s*([^，,。;；\n]+)', "material"),
+        (r'(?:学习内容|学什么|要学什么|内容)[:：]?\s*([^，,。;；\n]+)', "content"),
+        (r'(?:要学习到|学习程度|程度|学到什么程度|学到)[:：]?\s*([^，,。;；\n]+)', "level"),
+    ]
+    for pat, key in patterns:
+        m = re.search(pat, user_input)
+        if m and m.group(1).strip():
+            result[key] = m.group(1).strip()
+    return result
+
+
+def build_learning_description(material, content, level):
+    """把三要素组合成技能生成描述（含完整度要求）"""
+    req = LEVEL_REQUIREMENTS.get(level, LEVEL_REQUIREMENTS["完全掌握"])
+    return "目标材料：%s。学习内容：%s。学习程度：%s（要求：%s）" % (material, content, level, req)
+
+
 # ==================== 相似技能整合 ====================
 
 # 常见动作词/修饰词：去掉它们后剩下的就是"目标物"（如 记事本）
@@ -381,12 +416,19 @@ _MERGE_NOISE_WORDS = [
     "管理", "支持", "功能", "操作", "可以选择", "可选择", "以及", "同时",
     "追加", "清空", "清除", "选择", "当前", "指定", "相应", "对应",
     "打印", "文件", "路径", "显示", "查看", "日期", "时间", "信息",
+    "电脑", "计算机", "目标", "学习", "掌握", "使用", "程度", "材料",
+    "完全", "要求", "方式",
+    "实现", "基本", "功能", "即可", "完成", "核心", "常用", "覆盖",
+    "主要", "全部", "常见", "场景", "处理", "边界", "情况", "尽可能",
+    "所有", "异常", "做到", "开箱即用",
 ]
 
 
 def extract_target(description):
     """从描述中提取目标名词（去动作词与修饰词后的核心词）"""
     target = description or ""
+    # 先去掉括号内的补充内容（如"（要求：...）"），避免污染目标词
+    target = re.sub(r'[（(][^)）]*[)）]', '', target)
     for w in _MERGE_NOISE_WORDS:
         target = target.replace(w, "")
     # 去掉标点与空白
@@ -432,7 +474,8 @@ def merge_skills(existing_name, existing_code, new_desc, new_code, capabilities)
         "5. 函数接收 param: str = ''（param 是用户的完整请求文本，技能内部用关键词判断动作并提取内容）\n"
         "6. 保留 __skill_meta__，description 更新为能同时覆盖两个功能\n"
         "7. 写入文本建议：写到临时文件后 os.startfile 打开，不要用 SendKeys/COM 模拟键盘\n"
-        "8. 只输出 Python 代码，不要解释，不要 markdown 代码块"
+        "8. 已有技能中以下划线开头（_xxx）的辅助函数：保持原样，不要改它们的签名和调用方式\n"
+        "9. 只输出 Python 代码，不要解释，不要 markdown 代码块"
         % (existing_name, new_desc, caps_json, existing_name)
     )
     user = (
@@ -440,39 +483,53 @@ def merge_skills(existing_name, existing_code, new_desc, new_code, capabilities)
         "【新技能代码】\n%s\n\n"
         "请输出合并后的完整代码。" % (existing_code, new_code)
     )
-    try:
-        cloud = CloudEngine()
-        result = cloud.chat([
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ])
-        code = ""
-        if isinstance(result, dict):
-            code = result.get("answer", "")
-        elif isinstance(result, str):
-            code = result
-        code = _strip_code_fence(code)
-        if not code or len(code) < 30:
-            return None
-        # 校验合并结果：静态校验 + 沙箱冒烟测试
-        check = validate_code(code, capabilities)
-        if not check["ok"]:
-            logger.info("[Factory] 合并结果未通过校验: %s", check["violations"][:3])
-            return None
-        test = sandbox_test(code, capabilities)
-        if not test["ok"]:
-            logger.info("[Factory] 合并结果冒烟测试失败: %s", test["error"][:120])
-            return None
-        # 确认函数名仍是原技能名
-        func_name = extract_skill_info(code)[0]
-        if func_name != existing_name:
-            logger.info("[Factory] 合并后函数名变了 (%s -> %s)，拒绝", existing_name, func_name)
-            return None
-        desc = extract_skill_info(code)[1] or new_desc
-        return code, desc
-    except Exception as e:
-        logger.warning("[Factory] 合并调用失败: %s", e)
-        return None
+    # 合并最多尝试 2 轮：失败把校验/冒烟测试错误喂回重试
+    errors = []
+    for attempt in range(1, 3):
+        try:
+            if errors:
+                user = (
+                    "【已有技能代码】\n%s\n\n【新技能代码】\n%s\n\n"
+                    "【上一轮合并结果的问题】\n%s\n\n请修复并输出合并后的完整代码。"
+                    % (existing_code, new_code, "\n".join(errors))
+                )
+            cloud = CloudEngine()
+            result = cloud.chat([
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ])
+            code = ""
+            if isinstance(result, dict):
+                code = result.get("answer", "")
+            elif isinstance(result, str):
+                code = result
+            code = _strip_code_fence(code)
+            if not code or len(code) < 30:
+                errors = ["合并输出为空"]
+                continue
+            # 校验合并结果：静态校验 + 沙箱冒烟测试
+            check = validate_code(code, capabilities)
+            if not check["ok"]:
+                logger.info("[Factory] 合并第 %d 轮未通过校验: %s", attempt, check["violations"][:3])
+                errors = check["violations"]
+                continue
+            test = sandbox_test(code, capabilities)
+            if not test["ok"]:
+                logger.info("[Factory] 合并第 %d 轮冒烟测试失败: %s", attempt, test["error"][:120])
+                errors = [test["error"]]
+                continue
+            # 确认函数名仍是原技能名
+            func_name = extract_skill_info(code)[0]
+            if func_name != existing_name:
+                logger.info("[Factory] 合并后函数名变了 (%s -> %s)，拒绝", existing_name, func_name)
+                errors = ["函数名必须是 %s" % existing_name]
+                continue
+            desc = extract_skill_info(code)[1] or new_desc
+            return code, desc
+        except Exception as e:
+            logger.warning("[Factory] 合并调用失败: %s", e)
+            errors = ["合并调用异常: %s" % e]
+    return None
 
 
 # ==================== 技能能力推荐与增强 ====================
