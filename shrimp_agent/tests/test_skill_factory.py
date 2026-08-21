@@ -74,6 +74,52 @@ def test_sanitize_filename():
     assert skill_factory.sanitize_filename("123abc") == "skill_123abc"
 
 
+def test_precheck_feasibility():
+    """生成前可行性预检：先理解环境再判断"""
+    # Windows 无硬件：打开记事本可行
+    win = {"platform": "Windows / Python 3.8.10", "network": True, "libs": ["PIL"]}
+    r = skill_factory.precheck_feasibility("打开记事本", win)
+    assert r["feasible"] is True
+
+    # 无舵机：跳舞不可行，并说明缺什么
+    r = skill_factory.precheck_feasibility("跳舞", win)
+    assert r["feasible"] is False
+    assert "舵机" in r["reason"]
+
+    # 无麦克风：收音不可行
+    r = skill_factory.precheck_feasibility("帮我收音", win)
+    assert r["feasible"] is False
+    assert "麦克风" in r["reason"]
+
+    # 声明了舵机后：跳舞可行
+    dog = {"actuators": [{"id": "leg_fl", "type": "servo"}]}
+    r = skill_factory.precheck_feasibility("跳一支舞", dog)
+    assert r["feasible"] is True
+
+
+def test_strip_code_fence():
+    """健壮提取：带解释文字+围栏 / 无围栏 / 语言标签"""
+    # 围栏前有解释文字（之前失败的场景）
+    raw = '根据您的需求，我为您生成了技能：\n\n```python\nimport subprocess\n\ndef open_notepad():\n    return "ok"\n```'
+    code = skill_factory._strip_code_fence(raw)
+    assert code.startswith("import subprocess")
+    assert "def open_notepad" in code
+    assert "根据您的需求" not in code
+
+    # 无围栏，带语言标签行
+    raw2 = 'python\nimport os\n\ndef x():\n    return "ok"'
+    code2 = skill_factory._strip_code_fence(raw2)
+    assert code2.startswith("import os")
+
+    # 无围栏，开头是解释文字
+    raw3 = '这是代码：\ndef hello():\n    return "hi"'
+    code3 = skill_factory._strip_code_fence(raw3)
+    assert code3.startswith("def hello")
+
+    # 空输入
+    assert skill_factory._strip_code_fence("") == ""
+
+
 if __name__ == "__main__":
     test_templates_empty()
     test_available_templates_empty()
@@ -83,4 +129,6 @@ if __name__ == "__main__":
     test_validate_code()
     test_extract_skill_info()
     test_sanitize_filename()
+    test_precheck_feasibility()
+    test_strip_code_fence()
     print("✅ skill_factory 测试通过")

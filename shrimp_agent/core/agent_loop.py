@@ -136,13 +136,16 @@ class AgentLoop:
         return None
 
     def _skill_target_matches(self, target: str, skill_name: str, info: dict) -> bool:
-        normalized_target = target.lower()
+        # 去掉目标词开头的动作前缀（如"执行打开记事本" → "记事本"）
+        target_clean = re.sub(r'^(打开|运行|启动|执行|使用)\s*', '', target).lower()
+        normalized_target = target_clean or target.lower()
+
         # 技能名精确匹配或互相包含
         if normalized_target == skill_name.lower():
             return True
         if skill_name.lower() in normalized_target or normalized_target in skill_name.lower():
             return True
-        # 描述包含目标词（如"跳舞" → dance 的描述里有"跳舞"）
+        # 描述包含目标词（如"记事本" → "打开 Windows 记事本程序"）
         desc = info.get("description", "")
         if normalized_target and normalized_target in desc.lower():
             return True
@@ -323,19 +326,31 @@ class AgentLoop:
         return any(re.search(p, user_input) for p in patterns)
 
     def _handle_create_skill(self, user_input: str, history: list) -> str:
-        """按能力清单迭代生成新技能"""
+        """按能力清单迭代生成新技能（先理解环境、预检可行性）"""
         description = user_input
         match = re.search(r'(?:新增|增加|创建|添加|生成)\s*技能[:：]?\s*(.+?)(?:[。.！!？?]|$)', user_input)
         if match:
             description = match.group(1).strip()
 
+        # 1. 环境可行性预检：需求需要的能力，本环境有没有
+        from core.skill_factory import precheck_feasibility
+        pre = precheck_feasibility(description, self.capabilities)
+        if not pre["feasible"]:
+            return (
+                f"❌ 这个技能在当前环境做不了：{pre['reason']}\n\n"
+                f"📋 当前环境：{self._capabilities_summary()}\n"
+                f"（如果是机器人的动作/硬件技能，需要先在 /environment 里声明对应硬件）"
+            )
+
+        # 2. 交给技能工厂生成（LLM 迭代 / 模板兜底）
         result = generate_skill(description, self.capabilities, history)
         if not result:
             return (
-                "❌ 生成技能失败。可能原因：\n"
-                "  • 需求描述不够具体\n"
-                "  • 本环境没有支持该需求的硬件（可查看/修改能力清单 /environment）\n"
-                "  • 云端不可用且没有匹配的模板"
+                "❌ 生成技能失败：AI 没能产出可用的代码。\n"
+                f"📋 当前环境：{self._capabilities_summary()}\n\n"
+                "可能原因：\n"
+                "  • 需求描述太模糊，试试更具体，如「新增技能：用系统画图程序打开图片」\n"
+                "  • 云端暂时不可用"
             )
 
         skill_code, skill_name, skill_desc, msgs = result

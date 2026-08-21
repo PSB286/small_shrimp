@@ -159,20 +159,21 @@ def _llm_available():
 
 def _build_generation_prompt(capabilities, description, history=None, round_no=1, previous_errors=None):
     caps_json = json.dumps(capabilities, ensure_ascii=False, indent=2)
+    guide = _environment_guide(capabilities)
     lines = [
         "你是小虾米的技能生成器。根据【环境能力清单】和【用户需求】生成一个完整的 Python 技能文件。",
         "",
         "【环境能力清单】",
         caps_json,
         "",
+        "【环境理解（先理解环境再写代码）】",
+        guide,
+        "",
         "【生成规则】",
-        "1. 函数名用英文小写+下划线，如 walk_forward",
-        "2. 只能使用能力清单里声明过的硬件：",
-        "   from hardware import hw",
-        "   hw.servo('舵机id').set_angle(角度, speed=速度)   # 角度必须在舵机量程内",
-        "   hw.play_poses([{舵机id: 角度, ...}, ...], interval=秒)  # 动作序列",
-        "   hw.display().show_emoji('😊') / hw.display().text([...])",
-        "   hw.mic().listen(秒) / hw.speaker().say('文本')",
+        "1. 函数名用英文小写+下划线，如 open_notepad",
+        "2. 只能使用环境里真实存在的能力：",
+        "   - Windows 桌面能力: os.startfile / subprocess / PIL（若已安装）",
+        "   - 硬件能力（仅在清单声明时）: hw.servo / hw.display / hw.mic / hw.speaker",
         "3. 舵机角度默认在 0~180 之间，动作间隔不小于 0.1 秒，步数有限",
         "4. import 只能使用标准库、清单内声明的库、以及 hardware",
         "5. 函数接收 param: str = '' 参数，返回字符串结果",
@@ -198,10 +199,17 @@ def _build_generation_prompt(capabilities, description, history=None, round_no=1
 def generate_skill(description, capabilities, history=None, max_rounds=None):
     """
     迭代生成技能代码。
+    先做环境可行性预检（理解环境 → 判断是否可行），
     返回 (code, name, desc, messages) 或 None（多次失败/无可用途径）
     """
     max_rounds = max_rounds or settings.max_generate_rounds
     messages = []
+
+    # 0. 环境可行性预检：需求需要的能力，本环境是否有
+    pre = precheck_feasibility(description, capabilities)
+    if not pre["feasible"]:
+        logger.info("[Factory] 可行性预检拦截: %s", pre["reason"])
+        return None
 
     # 优先 LLM 迭代生成
     if _llm_available():
@@ -249,11 +257,108 @@ def generate_skill(description, capabilities, history=None, max_rounds=None):
 
 
 def _strip_code_fence(code):
+    """
+    从 LLM 输出中稳健提取 Python 代码。
+    兼容：有/无围栏、围栏前有解释文字、语言标签(python/python3/py)、
+    多个围栏片段等情况。提取不到返回 ""。
+    """
     code = code.strip()
-    m = re.search(r'```(?:python)?\s*(.*?)```', code, re.DOTALL)
-    if m:
-        code = m.group(1).strip()
-    return code
+    if not code:
+        return ""
+
+    # 情况1：存在 ``` 围栏 —— 取第一对围栏之间的内容
+    if "```" in code:
+        parts = code.split("```")
+        # parts 以 ``` 为界交替切分：文本/代码/文本/代码...
+        for i in range(1, len(parts), 2):
+            chunk = parts[i].lstrip("\n")
+            lines = chunk.split("\n")
+            # 去掉首行可能的语言标签（python / python3 / py 等）
+            if len(lines) > 1 and re.match(r'^[a-zA-Z0-9_+-]*\s*$', lines[0]):
+                lines = lines[1:]
+            candidate = "\n".join(lines).strip()
+            if candidate:
+                return candidate
+        return ""
+
+    # 情况2：没有围栏 —— 去掉开头的解释文字，从第一行代码开始
+    lines = code.split("\n")
+    start = 0
+    for i, line in enumerate(lines):
+        s = line.strip()
+        if s.startswith(("def ", "import ", "from ", "class ", "#", "__skill_meta__", "@")):
+            start = i
+            break
+    return "\n".join(lines[start:]).strip()
+
+
+# ==================== 环境可行性预检 ====================
+
+# 需求关键词 → 需要的能力；缺失即判定"本环境做不了"
+HARDWARE_KEYWORDS = [
+    (["舵机", "伺服", "走路", "跑步", "奔跑", "跳舞", "跳个舞", "跳支舞", "舞蹈", "摇尾巴", "尾巴", "迈步", "动作序列", "servo", "pose"],
+     "actuators", "舵机/动作硬件"),
+    (["点亮屏幕", "屏幕显示", "显示表情", "oled", "lcd", "点阵屏", "屏幕表情"],
+     "display", "屏幕"),
+    (["收音", "录音", "麦克风", "听声音", "语音输入", "拾音", "听我说话"],
+     "audio_in", "麦克风"),
+    (["说话", "朗读", "语音播报", "语音输出", "tts", "喇叭", "开口说话"],
+     "audio_out", "喇叭"),
+    (["拍照", "摄像", "摄像头", "录像", "拍照片"],
+     "camera", "摄像头"),
+]
+
+
+def precheck_feasibility(description, capabilities):
+    """
+    生成前可行性预检：先理解环境，再判断需求是否可行。
+    返回 {"feasible": bool, "reason": str, "missing": [能力名]}
+    """
+    missing = []
+    for keywords, cap_key, label in HARDWARE_KEYWORDS:
+        if any(k in description for k in keywords) and not capabilities.get(cap_key):
+            missing.append(label)
+    if missing:
+        return {
+            "feasible": False,
+            "missing": missing,
+            "reason": "当前环境没有%s，无法生成这个技能" % "、".join(missing),
+        }
+    return {"feasible": True, "missing": [], "reason": ""}
+
+
+def _environment_guide(capabilities):
+    """
+    把能力清单翻译成 LLM 能理解的环境说明：
+    让生成器"先理解环境"，再写对应平台的代码。
+    """
+    lines = []
+    platform = capabilities.get("platform", "")
+    if "Windows" in platform:
+        lines.append("- 系统: Windows，可用 os.startfile()/subprocess 打开程序、PIL 截图等")
+    elif "Linux" in platform:
+        lines.append("- 系统: Linux，可用 subprocess 执行系统命令")
+    elif "Darwin" in platform or "mac" in platform.lower():
+        lines.append("- 系统: macOS，可用 subprocess/os 打开程序")
+    if capabilities.get("network"):
+        lines.append("- 可联网: 可用 requests 请求网络")
+    if capabilities.get("libs"):
+        lines.append("- 已安装库: %s" % ", ".join(capabilities["libs"]))
+    if capabilities.get("display"):
+        lines.append("- 有屏幕: 可用 hw.display()")
+    if capabilities.get("actuators"):
+        lines.append("- 有舵机: 可用 hw.servo('id') / hw.play_poses([...])")
+    if capabilities.get("audio_in"):
+        lines.append("- 有麦克风: 可用 hw.mic()")
+    if capabilities.get("audio_out"):
+        lines.append("- 有喇叭: 可用 hw.speaker()")
+    if capabilities.get("camera"):
+        lines.append("- 有摄像头: 可用相应库")
+    if not capabilities.get("actuators"):
+        lines.append("- 无舵机/动作硬件，不要生成跳舞/走路/摇尾巴等动作类技能")
+    if not capabilities.get("display"):
+        lines.append("- 无硬件屏幕，不要生成 hw.display() 相关代码")
+    return "\n".join(lines) if lines else "- 无特殊能力（纯文本环境）"
 
 
 def _generate_from_template_match(description, capabilities):

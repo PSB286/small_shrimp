@@ -53,6 +53,13 @@
       ],
       "skill": "greet",
       "description": "跟我打招呼 - 向用户发出友好问候"
+    },
+    {
+      "keywords": [
+        "打开记事本"
+      ],
+      "skill": "open_notepad",
+      "description": "打开 Windows 记事本程序"
     }
   ],
   "auto_create": true,
