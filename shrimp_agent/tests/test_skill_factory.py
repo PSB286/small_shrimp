@@ -97,6 +97,26 @@ def test_precheck_feasibility():
     assert r["feasible"] is True
 
 
+def test_extract_target():
+    """目标名词提取：去掉动作词后得到核心目标"""
+    assert "记事本" in skill_factory.extract_target("打开记事本并写入指定文字")
+    assert "记事本" in skill_factory.extract_target("打开 Windows 记事本程序")
+    assert "浏览器" in skill_factory.extract_target("用浏览器打开网页")
+
+
+def test_find_similar_skills():
+    """相似技能检测：同一目标物的技能应被识别"""
+    existing = {
+        "open_notepad": {"description": "打开 Windows 记事本程序"},
+        "calc": {"description": "数学计算"},
+    }
+    similar = skill_factory.find_similar_skills("打开记事本并写入文字", existing)
+    assert "open_notepad" in similar
+    assert "calc" not in similar
+    # 无相似
+    assert skill_factory.find_similar_skills("查天气", existing) == []
+
+
 def test_strip_code_fence():
     """健壮提取：带解释文字+围栏 / 无围栏 / 语言标签"""
     # 围栏前有解释文字（之前失败的场景）
@@ -130,5 +150,7 @@ if __name__ == "__main__":
     test_extract_skill_info()
     test_sanitize_filename()
     test_precheck_feasibility()
+    test_extract_target()
+    test_find_similar_skills()
     test_strip_code_fence()
     print("✅ skill_factory 测试通过")

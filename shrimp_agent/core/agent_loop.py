@@ -356,6 +356,42 @@ class AgentLoop:
         skill_code, skill_name, skill_desc, msgs = result
         skill_name = sanitize_filename(skill_name, "new_skill")
 
+        # 3. 相似技能整合：已有类似技能时，合并进去而不是创建重复
+        from core.skill_factory import find_similar_skills, merge_skills
+        similar = find_similar_skills(description, self.skills.get_skills_info())
+        if similar:
+            existing_name = similar[0]
+            existing_code = self.skills.get_skill_code(existing_name)
+            if existing_code:
+                merged = merge_skills(existing_name, existing_code, skill_desc, skill_code, self.capabilities)
+                if merged:
+                    merged_code, merged_desc = merged
+                    backup = os.path.join(self.skills.skills_dir, ".backups")
+                    os.makedirs(backup, exist_ok=True)
+                    import shutil as _shutil
+                    _shutil.copy2(
+                        os.path.join(self.skills.skills_dir, f"{existing_name}.py"),
+                        os.path.join(backup, f"{existing_name}_premerge.py"),
+                    )
+                    with open(os.path.join(self.skills.skills_dir, f"{existing_name}.py"),
+                              "w", encoding="utf-8") as f:
+                        f.write(merged_code)
+                    self.skills.reload_skills()
+                    self.cloud.set_skills_info(self.skills.get_skills_info())
+                    self._update_memory_context()
+                    self.permanent_memory.add_fact(
+                        f"把「{skill_desc}」整合进了已有技能 {existing_name}（现为：{merged_desc}）", "skills"
+                    )
+                    return (
+                        f"🧩 **已整合相似技能！**\n\n"
+                        f"新需求「{skill_desc}」与已有技能 `{existing_name}` 功能重叠，"
+                        f"我没有创建重复技能，而是把它合并进了 `{existing_name}`：\n"
+                        f"  📦 {existing_name}：{merged_desc}\n\n"
+                        f"现在可以说「{description}」直接使用（旧版已备份到 .backups）。"
+                    )
+                # 合并失败 → 退回创建新技能
+                logger.warning("[Agent] 技能 %s 合并失败，创建独立技能", skill_name)
+
         skills_dir = self.skills.skills_dir
         if not os.path.exists(skills_dir):
             os.makedirs(skills_dir)
@@ -500,6 +536,13 @@ class AgentLoop:
 4. 如果用户说"你好"或"hi"，热情回应
 5. 直接输出自然语言，不要输出JSON格式
 
+【技能执行协议（重要）】
+如果用户的需求【可以用已安装技能完成】，你的回复必须以一行指令开头，不要只口头描述：
+__EXEC__:技能名
+__EXEC__:技能名|参数
+技能名必须是上面【已安装的技能】列表中的名字，参数是用户给的具体内容（没有则省略）。
+指令行之外不要输出任何说明文字。
+
 当前时间：{datetime.datetime.now().strftime('%Y年%m月%d日 %H:%M:%S')}"""
 
             messages = [
@@ -510,18 +553,48 @@ class AgentLoop:
 
             result = self.cloud.chat(messages)
 
+            answer = ""
             if isinstance(result, dict):
                 answer = result.get("answer", "")
-                if answer and len(answer) > 1:
-                    return answer
-            if isinstance(result, str) and len(result) > 2:
-                return result
+            elif isinstance(result, str):
+                answer = result
+
+            # 解析技能执行协议指令：__EXEC__:技能名|参数
+            exec_result = self._handle_exec_directive(answer)
+            if exec_result is not None:
+                return exec_result
+
+            if answer and len(answer) > 1:
+                return answer
 
             return "抱歉，我没有理解你的意思。你可以试试：\n- 记住什么：'记住我喜欢吃西瓜'\n- 查看记忆：'查看记忆'\n- 创建技能：'新增技能：跳个舞'\n- 查看环境：'查看环境能力'"
 
         except Exception as e:
             logger.error(f"[Agent] 云端聊天失败: {e}")
             return f"抱歉，我暂时无法回答。你可以换个方式问我。😊"
+
+    def _handle_exec_directive(self, reply):
+        """
+        处理云端返回的技能执行指令 __EXEC__:技能名|参数。
+        找到就真正执行技能并返回结果；否则返回 None（正常聊天）。
+        """
+        if not reply:
+            return None
+        # 指令可出现在回复任意位置：__EXEC__:技能名|参数
+        m = re.search(r'__EXEC__:(\w+)(?:\|([^\n]*))?', reply)
+        if not m:
+            return None
+        skill_name = m.group(1)
+        param = (m.group(2) or "").strip()
+        note = reply.replace(m.group(0), "").strip()
+
+        if not self.skills.skill_exists(skill_name):
+            return (note + "\n\n" if note else "") + f"⚠️ 技能 {skill_name} 不存在，无法执行。"
+
+        result = self._execute_skill(skill_name, {"param": param} if param else {})
+        if note:
+            return f"{note}\n\n{result}"
+        return result
 
     def _capabilities_summary(self) -> str:
         """把能力清单转成一句话描述"""

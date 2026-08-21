@@ -151,6 +151,100 @@ def sanitize_filename(name, fallback="new_skill"):
     return name
 
 
+# ==================== 相似技能整合 ====================
+
+# 常见动作词/修饰词：去掉它们后剩下的就是"目标物"（如 记事本）
+_MERGE_NOISE_WORDS = [
+    "打开", "运行", "启动", "执行", "写入", "读取", "删除", "创建", "关闭",
+    "指定", "文字", "内容", "程序", "应用", "系统", "Windows", "并", "和",
+    "与", "或", "的", "在", "中", "里", "到", "进", "把", "将", "请", "帮我",
+]
+
+
+def extract_target(description):
+    """从描述中提取目标名词（去动作词后的核心词）"""
+    target = description
+    for w in _MERGE_NOISE_WORDS:
+        target = target.replace(w, "")
+    target = target.strip()
+    return target
+
+
+def find_similar_skills(description, existing_skills):
+    """
+    找出与需求相似的已有技能（基于目标名词重叠）。
+    返回相似技能名列表。
+    """
+    target = extract_target(description)
+    if len(target) < 2:
+        return []
+    similar = []
+    for name, info in existing_skills.items():
+        desc = info.get("description", "") or ""
+        if target in desc or (target and target in extract_target(desc)):
+            similar.append(name)
+    return similar
+
+
+def merge_skills(existing_name, existing_code, new_desc, new_code, capabilities):
+    """
+    把新技能整合进已有相似技能（LLM 合并 + 校验）。
+    返回 (merged_code, merged_desc) 或 None（失败）。
+    """
+    if not _llm_available():
+        return None
+    caps_json = json.dumps(capabilities, ensure_ascii=False, indent=2)
+    system = (
+        "你是小虾米的技能整合器。用户已有技能【%s】，又生成了新技能【%s】。\n"
+        "请把两者的功能合并成一个增强版技能，只输出合并后的完整 Python 代码。\n\n"
+        "【环境能力清单】\n%s\n\n"
+        "规则：\n"
+        "1. 函数名保持 %s 不变（沿用已有技能名）\n"
+        "2. 保留已有技能的全部功能，并支持新技能的功能（用 param 参数区分，param 为空走原有逻辑）\n"
+        "3. 只能使用环境能力清单内真实存在的能力；本环境没有的能力不要用（如无屏幕就别用 hw.display）\n"
+        "4. import 只能用标准库/清单库/hardware\n"
+        "5. 函数接收 param: str = ''，返回字符串结果\n"
+        "6. 保留 __skill_meta__，description 更新为能同时覆盖两个功能\n"
+        "7. 写入文本建议：写到临时文件后 os.startfile 打开，不要用 SendKeys/COM 模拟键盘\n"
+        "8. 只输出 Python 代码，不要解释，不要 markdown 代码块"
+        % (existing_name, new_desc, caps_json, existing_name)
+    )
+    user = (
+        "【已有技能代码】\n%s\n\n"
+        "【新技能代码】\n%s\n\n"
+        "请输出合并后的完整代码。" % (existing_code, new_code)
+    )
+    try:
+        cloud = CloudEngine()
+        result = cloud.chat([
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ])
+        code = ""
+        if isinstance(result, dict):
+            code = result.get("answer", "")
+        elif isinstance(result, str):
+            code = result
+        code = _strip_code_fence(code)
+        if not code or len(code) < 30:
+            return None
+        # 校验合并结果：语法 + 能力约束
+        check = validate_code(code, capabilities)
+        if not check["ok"]:
+            logger.info("[Factory] 合并结果未通过校验: %s", check["violations"][:3])
+            return None
+        # 确认函数名仍是原技能名
+        func_name = extract_skill_info(code)[0]
+        if func_name != existing_name:
+            logger.info("[Factory] 合并后函数名变了 (%s -> %s)，拒绝", existing_name, func_name)
+            return None
+        desc = extract_skill_info(code)[1] or new_desc
+        return code, desc
+    except Exception as e:
+        logger.warning("[Factory] 合并调用失败: %s", e)
+        return None
+
+
 # ==================== LLM 迭代生成 ====================
 
 def _llm_available():

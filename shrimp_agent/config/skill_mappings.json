@@ -60,6 +60,13 @@
       ],
       "skill": "open_notepad",
       "description": "打开 Windows 记事本程序"
+    },
+    {
+      "keywords": [
+        "向记事本写入文字"
+      ],
+      "skill": "write_to_notepad",
+      "description": "打开记事本并写入指定文字"
     }
   ],
   "auto_create": true,

@@ -107,12 +107,19 @@ class CapabilityChecker:
                     for sid in self._pose_servo_ids(node):
                         if sid not in self._servo_ids:
                             violations.append("动作序列引用了未声明的舵机 '%s'" % sid)
-            elif attr == "display" and not self._has_display:
-                violations.append("本环境没有屏幕设备，不能调用 hw.display()")
-            elif attr == "mic" and not self._has_mic:
-                violations.append("本环境没有麦克风设备，不能调用 hw.mic()")
-            elif attr == "speaker" and not self._has_speaker:
-                violations.append("本环境没有喇叭设备，不能调用 hw.speaker()")
+            elif attr in ("display", "mic", "speaker"):
+                # 调用方式检查：hw.display() 是取设备的方法，不能带参数
+                if node.args or node.keywords:
+                    violations.append(
+                        "hw.%s() 不接受参数：应先取设备再调方法，如 hw.display().text([...]) / hw.display().show_emoji('😊')" % attr
+                    )
+                # 能力存在性检查
+                if attr == "display" and not self._has_display:
+                    violations.append("本环境没有屏幕设备，不能调用 hw.display()")
+                elif attr == "mic" and not self._has_mic:
+                    violations.append("本环境没有麦克风设备，不能调用 hw.mic()")
+                elif attr == "speaker" and not self._has_speaker:
+                    violations.append("本环境没有喇叭设备，不能调用 hw.speaker()")
 
         return {"ok": not violations, "violations": violations, "warnings": warnings}
 

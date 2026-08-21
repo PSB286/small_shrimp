@@ -54,6 +54,13 @@ def x():
     return "ok"
 '''
 
+BAD_DISPLAY_CALL = '''from hardware import hw
+
+def x():
+    hw.display("直接调用带参数")
+    return "ok"
+'''
+
 SYNTAX_BAD = '''def x(:
     return "ok"
 '''
@@ -83,6 +90,14 @@ def test_display_requires_capability():
     assert any("屏幕" in v for v in r["violations"])
 
 
+def test_display_wrong_call_rejected():
+    """hw.display('x') 带参数调用：即使有屏幕也要拦截（取设备的方法不能带参）"""
+    caps_with_display = {"display": {"type": "display"}}
+    r = CapabilityChecker(caps_with_display).check(BAD_DISPLAY_CALL)
+    assert not r["ok"]
+    assert any("不接受参数" in v for v in r["violations"])
+
+
 def test_pose_servo_rejected():
     r = CapabilityChecker(CAPS).check(BAD_POSES)
     assert not r["ok"]
@@ -99,6 +114,7 @@ if __name__ == "__main__":
     test_unknown_servo_rejected()
     test_forbidden_import_rejected()
     test_display_requires_capability()
+    test_display_wrong_call_rejected()
     test_pose_servo_rejected()
     test_syntax_error()
     print("✅ capability_checker 测试通过")
