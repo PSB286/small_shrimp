@@ -63,6 +63,23 @@ class MemoryIntegration:
                     "message": f"好的，我会记住：**{fact}** 📝"
                 }
 
+        # 匹配"无需/不要/别/不用 + 规则"（用户偏好/习惯，真正入库，不再口头说说）
+        rule_match = re.match(
+            r'^(?:以后|今后|从现在开始|之后)?\s*(?:无需|不要|别|不用|别再|不要再)\s*(.+?)(?:[。.！!？?]|$)',
+            user_input_clean
+        )
+        if rule_match:
+            rule_text = rule_match.group(1).strip()
+            if rule_text and len(rule_text) >= 3 and '吗' not in rule_text and '什么' not in rule_text:
+                self.permanent.set_preference("rule_" + rule_text[:12], rule_text)
+                return {
+                    "memorized": True,
+                    "type": "preference",
+                    "key": "rule",
+                    "value": rule_text,
+                    "message": f"好的，我记住了：**{user_input_clean}** ✨"
+                }
+
         return result
 
     def get_memory_context(self) -> str:

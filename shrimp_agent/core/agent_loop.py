@@ -121,20 +121,51 @@ class AgentLoop:
             logger.info("[SkillMatch] Question detected, skipping skill execution.")
             return None
 
-        action_match = re.match(r'^(?:打开|运行|启动|执行|使用)\s*(.+)$', user_input_clean)
-        if not action_match:
-            logger.info("[SkillMatch] No action word at start, skipping skill execution.")
+        # 否定句（无需/不要/别…）不是技能命令，跳过（交给记忆/聊天）
+        if any(k in user_input_clean for k in ["无需", "不要", "别", "不用", "别再", "不要再", "不需要"]):
             return None
 
-        target = action_match.group(1).strip()
-        logger.info(f"[SkillMatch] Extracted target: '{target}'")
+        action_match = re.match(r'^(?:打开|运行|启动|执行|使用)\s*(.+)$', user_input_clean)
+        if action_match:
+            target = action_match.group(1).strip()
+            logger.info(f"[SkillMatch] Extracted target: '{target}'")
+            for skill_name, info in self.skills.skills.items():
+                if self._skill_target_matches(target, skill_name, info):
+                    return self._execute_skill(skill_name)
+            logger.info(f"[SkillMatch] No exact match for target '{target}'")
 
+        # 自然语言匹配（本地确定性执行，不依赖云端）：
+        # 输入同时含"技能目标词"和"动作词" → 直接执行，把完整请求传给技能解析
         for skill_name, info in self.skills.skills.items():
-            if self._skill_target_matches(target, skill_name, info):
-                return self._execute_skill(skill_name)
+            if self._natural_language_skill_match(user_input_clean, skill_name, info):
+                logger.info(f"[SkillMatch] NL match: {skill_name} <- '{user_input_clean}'")
+                return self._execute_skill(skill_name, {"param": user_input_clean})
 
-        logger.info(f"[SkillMatch] No exact match for target '{target}', passing to cloud.")
+        logger.info("[SkillMatch] No match, passing to cloud.")
         return None
+
+    # 常见动作词（与技能目标词共同出现时判定为执行意图）
+    _ACTION_VERBS = [
+        "打开", "运行", "启动", "执行", "使用", "写入", "写上", "写一下", "写",
+        "读取", "读一下", "读出来", "读", "清空", "清除", "清掉", "追加",
+        "记录", "保存", "删除", "设置", "改成", "计算", "搜索", "查询",
+        "显示", "播放", "发送", "生成", "创建", "关闭", "说出", "告诉",
+    ]
+
+    def _natural_language_skill_match(self, user_input: str, skill_name: str, info: dict) -> bool:
+        """输入同时提到技能目标物和动作词 → 判定为执行意图"""
+        from core.skill_factory import extract_target
+        desc = info.get("description", "") or ""
+        target = extract_target(desc)
+        if len(target) < 2:
+            return False
+        # 输入必须包含技能的目标名词
+        if target not in user_input:
+            return False
+        # 且包含一个动作词
+        if not any(v in user_input for v in self._ACTION_VERBS):
+            return False
+        return True
 
     def _skill_target_matches(self, target: str, skill_name: str, info: dict) -> bool:
         # 去掉目标词开头的动作前缀（如"执行打开记事本" → "记事本"）
@@ -629,9 +660,11 @@ class AgentLoop:
 【技能执行协议（重要）】
 如果用户的需求【可以用已安装技能完成】，你的回复必须以一行指令开头，不要只口头描述：
 __EXEC__:技能名
-__EXEC__:技能名|参数
-技能名必须是上面【已安装的技能】列表中的名字，参数是用户给的具体内容（没有则省略）。
-指令行之外不要输出任何说明文字。
+__EXEC__:技能名|用户完整请求
+- 技能名必须是上面【已安装的技能】列表中的名字
+- 参数必须是用户的【完整原话】，不要改写、不要只传名词；
+  技能内部会自己识别动作（写入/读取/清空/打开等）并提取内容
+- 指令行之外不要输出任何说明文字
 
 当前时间：{datetime.datetime.now().strftime('%Y年%m月%d日 %H:%M:%S')}"""
 
@@ -650,7 +683,7 @@ __EXEC__:技能名|参数
                 answer = result
 
             # 解析技能执行协议指令：__EXEC__:技能名|参数
-            exec_result = self._handle_exec_directive(answer)
+            exec_result = self._handle_exec_directive(answer, user_input)
             if exec_result is not None:
                 return exec_result
 
@@ -663,9 +696,10 @@ __EXEC__:技能名|参数
             logger.error(f"[Agent] 云端聊天失败: {e}")
             return f"抱歉，我暂时无法回答。你可以换个方式问我。😊"
 
-    def _handle_exec_directive(self, reply):
+    def _handle_exec_directive(self, reply, fallback_param=None):
         """
         处理云端返回的技能执行指令 __EXEC__:技能名|参数。
+        参数为空时用用户原始请求兜底（技能内部解析动作）。
         找到就真正执行技能并返回结果；否则返回 None（正常聊天）。
         """
         if not reply:
@@ -675,7 +709,7 @@ __EXEC__:技能名|参数
         if not m:
             return None
         skill_name = m.group(1)
-        param = (m.group(2) or "").strip()
+        param = (m.group(2) or "").strip() or (fallback_param or "").strip()
         note = reply.replace(m.group(0), "").strip()
 
         if not self.skills.skill_exists(skill_name):

@@ -158,16 +158,21 @@ _MERGE_NOISE_WORDS = [
     "打开", "运行", "启动", "执行", "写入", "读取", "删除", "创建", "关闭",
     "指定", "文字", "内容", "程序", "应用", "系统", "Windows", "并", "和",
     "与", "或", "的", "在", "中", "里", "到", "进", "把", "将", "请", "帮我",
+    "管理", "支持", "功能", "操作", "可以选择", "可选择", "以及", "同时",
+    "追加", "清空", "清除", "选择", "当前", "指定", "相应", "对应",
 ]
 
 
 def extract_target(description):
-    """从描述中提取目标名词（去动作词后的核心词）"""
-    target = description
+    """从描述中提取目标名词（去动作词与修饰词后的核心词）"""
+    target = description or ""
     for w in _MERGE_NOISE_WORDS:
         target = target.replace(w, "")
-    target = target.strip()
-    return target
+    # 去掉标点与空白
+    target = re.sub(r'[：:，,。.、；;！!？?（）()\[\]【】\s]+', '', target)
+    # 去重（如"记事本记事本"→"记事本"），保证目标词干净
+    target = ''.join(dict.fromkeys(target))
+    return target.strip()
 
 
 def find_similar_skills(description, existing_skills):
@@ -203,7 +208,7 @@ def merge_skills(existing_name, existing_code, new_desc, new_code, capabilities)
         "2. 保留已有技能的全部功能，并支持新技能的功能（用 param 参数区分，param 为空走原有逻辑）\n"
         "3. 只能使用环境能力清单内真实存在的能力；本环境没有的能力不要用（如无屏幕就别用 hw.display）\n"
         "4. import 只能用标准库/清单库/hardware\n"
-        "5. 函数接收 param: str = ''，返回字符串结果\n"
+        "5. 函数接收 param: str = ''（param 是用户的完整请求文本，技能内部用关键词判断动作并提取内容）\n"
         "6. 保留 __skill_meta__，description 更新为能同时覆盖两个功能\n"
         "7. 写入文本建议：写到临时文件后 os.startfile 打开，不要用 SendKeys/COM 模拟键盘\n"
         "8. 只输出 Python 代码，不要解释，不要 markdown 代码块"
@@ -306,7 +311,7 @@ def enhance_skill(existing_name, existing_code, instructions, capabilities):
         "2. 保留原有功能，新增指令要求的能力\n"
         "3. 只能使用环境清单里真实存在的能力；本环境没有的不要用\n"
         "4. import 只能用标准库/清单库/hardware\n"
-        "5. 函数接收 param: str = ''，返回字符串结果\n"
+        "5. 函数接收 param: str = ''（param 是用户的完整请求文本，技能内部用关键词判断动作并提取内容）\n"
         "6. 保留并更新 __skill_meta__ 的 description\n"
         "7. 只输出 Python 代码，不要解释，不要 markdown 代码块"
         % (caps_json, existing_name)
@@ -366,7 +371,8 @@ def _build_generation_prompt(capabilities, description, history=None, round_no=1
         "   - 硬件能力（仅在清单声明时）: hw.servo / hw.display / hw.mic / hw.speaker",
         "3. 舵机角度默认在 0~180 之间，动作间隔不小于 0.1 秒，步数有限",
         "4. import 只能使用标准库、清单内声明的库、以及 hardware",
-        "5. 函数接收 param: str = '' 参数，返回字符串结果",
+        "5. 函数接收 param: str = '' 参数。param 是用户的【完整请求文本】，"
+        "技能内部用关键词判断动作（如写入/读取/清空/打开）并提取内容，返回字符串结果",
         "6. 必须包含 __skill_meta__ = {\"description\": \"...\", \"params\": {...}}",
         "7. 只输出 Python 代码，不要解释，不要用 markdown 代码块",
     ]

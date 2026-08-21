@@ -52,7 +52,23 @@ def test_skill_stats_reset():
         shutil.rmtree(os.path.dirname(tmp), ignore_errors=True)
 
 
+def test_rule_preference_memorized():
+    """'无需反复打开记事本' 这类规则要真正入库，不是口头说说"""
+    from core.memory_integration import MemoryIntegration
+    mem = MemoryIntegration()
+    try:
+        result = mem.process_user_input("无需反复打开记事本")
+        assert result["memorized"] is True, result
+        assert result["type"] == "preference"
+        assert "反复打开记事本" in result["value"]
+        prefs = mem.permanent.get_all_preferences()
+        assert any("反复打开记事本" in v for v in prefs.values())
+    finally:
+        mem.permanent.clear_all()
+
+
 if __name__ == "__main__":
     test_permanent_memory_basic()
     test_skill_stats_reset()
+    test_rule_preference_memorized()
     print("✅ memory 测试通过")
