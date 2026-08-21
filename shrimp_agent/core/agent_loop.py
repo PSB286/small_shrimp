@@ -244,9 +244,9 @@ class AgentLoop:
 
     def _resolve_write_reference(self, user_input: str, history: list):
         """
-        解析"把X写到记事本"类引用：X 是模糊引用（诗/内容/回答/刚才的…）
-        时，取上一条助手消息内容，原样写入目标技能（__RAW__ 协议）。
-        返回执行结果或 None（不是引用请求）。
+        解析"把X写到Y"类引用：
+        先理解对话（LLM 从最近回复中筛选出 X 对应的具体内容，如只取诗），
+        再向用户确认筛选结果，确认后才执行技能。
         """
         m = re.search(
             r'(?:把|将)\s*(?:这个|刚才|上面|上一条|刚刚|那个)?\s*([^写\n]+?)\s*(?:写到|写进|写入|存到|放进|加进|记录到)\s*(\S+)',
@@ -255,25 +255,71 @@ class AgentLoop:
         if not m:
             return None
         ref = m.group(1).strip().strip("的")
-        # 只有模糊引用才取上一条消息；具体内容（如"测试123"）交给技能正常处理
         if not ref or not any(k in ref for k in ["内容", "诗", "回答", "回复", "消息", "这段话", "文字", "东西", "前面", "刚才"]):
             return None
-        last_bot = ""
+        # 收集最近的助手消息作为上下文（最多 2 条，诗可能在更早一条里）
+        bot_msgs = []
         for msg in reversed(history or []):
             if msg.get("role") == "assistant":
-                last_bot = msg.get("content", "") or ""
-                break
-        if not last_bot:
+                bot_msgs.insert(0, msg.get("content", "") or "")
+                if len(bot_msgs) >= 2:
+                    break
+        if not bot_msgs:
             return None
-        # 找到目标技能（按目标名词匹配，如"记事本"→open_notepad）
         target = m.group(2).strip()
         from core.skill_factory import extract_target
         for name, info in self.skills.skills.items():
             t = extract_target(info.get("description", "") or "")
             if len(t) >= 2 and t in target:
-                logger.info(f"[Agent] 引用上一条消息写入技能 {name}")
-                return self._execute_skill(name, {"param": "__RAW__:" + last_bot})
+                # 先理解对话：LLM 筛选出引用对应的具体内容（如只取诗词正文）
+                extracted = self._extract_referenced_content(ref, bot_msgs)
+                self.pending_ask = {
+                    "kind": "write_reference",
+                    "skill": name,
+                    "content": extracted if (extracted and "无法确定" not in extracted) else "",
+                    "ref": ref,
+                    "context": "\n\n---\n\n".join(bot_msgs),
+                }
+                logger.info(f"[Agent] 引用写入确认: ref={ref} content_len={len(self.pending_ask['content'])}")
+                return self._ask_write_reference(ref, self.pending_ask["content"])
         return None
+
+    def _extract_referenced_content(self, ref: str, bot_msgs: list, extra: str = "") -> str:
+        """LLM 理解对话，筛选出引用对应的具体内容（诗只取诗词正文）"""
+        try:
+            from llm.cloud_engine import CloudEngine
+            cloud = CloudEngine()
+            ctx = "\n\n---\n\n".join(bot_msgs)
+            prompt = (
+                f"用户想把【{ref}】写入记事本。下面是小虾米最近 {len(bot_msgs)} 条回复：\n\n{ctx}\n\n"
+                f"请提取用户所指的【{ref}】的具体内容。\n"
+                f"规则：只要与【{ref}】对应的那部分（比如诗只取诗词正文，"
+                f"去掉前面的寒暄、后面的引导语和解释说明）。"
+                + (("\n额外要求：%s" % extra) if extra else "")
+                + "\n如果无法确定，只输出：无法确定。否则只输出提取到的内容，不要任何解释。"
+            )
+            result = cloud.chat(prompt)
+            if isinstance(result, dict):
+                result = result.get("answer", "")
+            return str(result or "").strip()
+        except Exception as e:
+            logger.warning(f"[Agent] 引用内容提取失败: {e}")
+            return ""
+
+    def _ask_write_reference(self, ref: str, content: str) -> str:
+        """向用户确认筛选结果（有歧义先提出，确认后再执行）"""
+        if content:
+            return (
+                f"📋 我理解了，要把「{ref}」写入记事本。\n"
+                f"我从刚才的回复中**筛选出这段内容**：\n\n{content}\n\n"
+                f"回复 **确认** 写入；要调整直接说想法（如：只要诗、去掉标题）；取消说「取消」。"
+            )
+        return (
+            f"📋 我没能确定「{ref}」具体指哪部分，请确认：\n\n"
+            f"A. 写入上一条回复的全部内容\n"
+            f"B. 只写入其中诗的部分\n"
+            f"C. 其他（请说明你的要求）\n\n取消说「取消」。"
+        )
 
     def _natural_language_skill_match(self, user_input: str, skill_name: str, info: dict) -> bool:
         """输入同时提到技能目标物和动作词 → 判定为执行意图"""
@@ -784,8 +830,8 @@ class AgentLoop:
         """处理用户的歧义确认回复；不是确认返回 None（重新提问）"""
         if not self.pending_ask:
             return None
-        kind = self.pending_ask["kind"]
-        topic = self.pending_ask["topic"]
+        kind = self.pending_ask.get("kind", "")
+        topic = self.pending_ask.get("topic") or self.pending_ask.get("ref") or ""
         text = (user_input or "").strip()
 
         # 取消
@@ -803,6 +849,35 @@ class AgentLoop:
             if re.fullmatch(r'[bB]', text) or any(k in text for k in ["文字", "字面", "原样", "几个字"]):
                 self.pending_ask = None
                 return self._execute_skill("open_notepad", {"param": topic})
+
+        if kind == "write_reference":
+            skill = self.pending_ask.get("skill", "open_notepad")
+            content = self.pending_ask.get("content", "")
+            context = self.pending_ask.get("context", "")
+            ref = self.pending_ask.get("ref", "")
+            # 确认 → 用筛选出的内容写入（没筛选到则写全部）
+            if any(k in text for k in ["确认", "对", "好", "可以", "没问题", "就这样", "写入", "写吧", "行"]):
+                self.pending_ask = None
+                return self._execute_skill(skill, {"param": "__RAW__:" + (content or context)})
+            # A：写全部
+            if re.fullmatch(r'[aA]', text) or "全部" in text:
+                self.pending_ask = None
+                return self._execute_skill(skill, {"param": "__RAW__:" + context})
+            # B：只要诗的部分
+            if re.fullmatch(r'[bB]', text) or "诗" in text:
+                extracted = self._extract_referenced_content(ref, [context], extra="只要诗的内容，去掉其他文字")
+                self.pending_ask = None
+                if extracted and "无法确定" not in extracted:
+                    return self._execute_skill(skill, {"param": "__RAW__:" + extracted})
+                return "❌ 筛选诗的部分失败，请直接把要写的内容告诉我。"
+            # 其他 → 当作调整要求重新筛选
+            extracted = self._extract_referenced_content(ref, [context], extra=text)
+            if extracted and "无法确定" not in extracted:
+                self.pending_ask = None
+                return self._execute_skill(skill, {"param": "__RAW__:" + extracted})
+            self.pending_ask["content"] = ""
+            return self._ask_write_reference(ref, "")
+
         return None
 
     def _generate_creative_content(self, topic: str) -> str:
