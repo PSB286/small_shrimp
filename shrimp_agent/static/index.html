@@ -813,6 +813,127 @@
             word-break: break-all;
         }
 
+        /* ===== 新增技能 ===== */
+        .add-skill-hint {
+            font-size: 12px;
+            color: var(--muted);
+            margin-bottom: 6px;
+        }
+
+        .template-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-bottom: 12px;
+        }
+        .template-grid button {
+            background: linear-gradient(180deg, #ecfeff, #f8fdff);
+            border: 1px solid rgba(30, 201, 217, 0.18);
+            border-radius: 999px;
+            padding: 5px 12px;
+            font-size: 12.5px;
+            color: var(--muted-strong);
+            cursor: pointer;
+            transition: all 0.15s;
+            font-family: inherit;
+        }
+        .template-grid button:hover:not(:disabled) {
+            background: var(--primary-soft);
+            transform: translateY(-1px);
+        }
+        .template-grid button.disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+            text-decoration: line-through;
+        }
+
+        .add-input {
+            width: 100%;
+            padding: 9px 12px;
+            border: 1px solid rgba(30, 201, 217, 0.22);
+            border-radius: 12px;
+            outline: none;
+            font-size: 13.5px;
+            color: var(--text);
+            background: rgba(255,255,255,0.9);
+            margin-bottom: 8px;
+            font-family: inherit;
+            box-sizing: border-box;
+        }
+        .add-input:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(30, 201, 217, 0.12);
+        }
+
+        .preview-box {
+            display: none;
+            background: linear-gradient(180deg, #f7feff, #eefafc);
+            border: 1px solid rgba(30, 201, 217, 0.16);
+            border-radius: 12px;
+            padding: 10px 12px;
+            margin-bottom: 10px;
+            max-height: 240px;
+            overflow: auto;
+        }
+        .preview-box .p-name {
+            font-weight: 700;
+            color: var(--text);
+            font-size: 14px;
+        }
+        .preview-box .p-desc {
+            font-size: 12.5px;
+            color: var(--muted);
+            margin: 2px 0 6px 0;
+        }
+        .preview-box pre {
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 12px;
+            line-height: 1.5;
+            color: #24292e;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        .preview-box .p-check {
+            color: var(--success);
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .add-actions {
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+        }
+        .add-actions button {
+            padding: 8px 16px;
+            border-radius: 12px;
+            border: none;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            font-family: inherit;
+            transition: transform 0.15s, box-shadow 0.15s;
+        }
+        .add-actions button:active {
+            transform: scale(0.96);
+        }
+        .add-actions .btn-confirm {
+            background: linear-gradient(135deg, var(--success), #5fd8a8);
+            color: #fff;
+        }
+        .add-actions .btn-confirm:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+        .add-actions .btn-regen {
+            background: var(--primary-soft);
+            color: var(--muted-strong);
+        }
+        .add-actions .btn-cancel {
+            background: #f0f3f5;
+            color: var(--muted);
+        }
+
         /* ===== 响应式 ===== */
         @media (max-width: 480px) {
             .chat-box {
@@ -892,6 +1013,7 @@
             </div>
             <div class="actions">
                 <button id="envBtn" title="环境能力" aria-label="环境能力">🖥️</button>
+                <button id="addSkillBtn" title="新增技能" aria-label="新增技能">➕</button>
                 <button id="manageSkillsBtn" title="管理技能" aria-label="管理技能">⚙️</button>
                 <button id="clearBtn" title="清空对话" aria-label="清空对话">🗑️</button>
             </div>
@@ -950,6 +1072,32 @@
                 </div>
                 <div class="modal-body" id="envBody">
                     <p style="color:#8a9aae; text-align:center; padding:20px;">加载中…</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 新增技能模态框（模板 + 预览 + 确认） -->
+        <div class="modal-overlay" id="addSkillModal">
+            <div class="modal" role="dialog" aria-modal="true" aria-labelledby="addSkillTitle">
+                <div class="modal-header">
+                    <h2 id="addSkillTitle">➕ 新增技能</h2>
+                    <button class="close-btn" id="closeAddSkillBtn">✕</button>
+                </div>
+                <div class="modal-body">
+                    <div class="add-skill-hint">选一个模板，或直接描述你的需求，先预览再确认添加：</div>
+                    <div class="template-grid" id="templateGrid"></div>
+                    <input class="add-input" id="addSkillInput" placeholder="描述你的技能需求，如：获取电脑磁盘剩余空间" />
+                    <div class="preview-box" id="previewBox">
+                        <div class="p-name" id="previewName"></div>
+                        <div class="p-desc" id="previewDesc"></div>
+                        <div class="p-check">✅ 已通过自动校验与冒烟测试</div>
+                        <pre id="previewCode"></pre>
+                    </div>
+                    <div class="add-actions">
+                        <button class="btn-cancel" id="addCancelBtn">取消</button>
+                        <button class="btn-regen" id="addRegenBtn" style="display:none;">🔄 重新生成</button>
+                        <button class="btn-confirm" id="addConfirmBtn" disabled>✓ 确认添加</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1426,6 +1574,148 @@
             closeEnvModalBtn.addEventListener('click', () => envModal.classList.remove('active'));
             envModal.addEventListener('click', (e) => {
                 if (e.target === envModal) envModal.classList.remove('active');
+            });
+
+            // ===== 新增技能（模板 + 预览 + 确认） =====
+            const addSkillModal = document.getElementById('addSkillModal');
+            const addSkillBtn = document.getElementById('addSkillBtn');
+            const closeAddSkillBtn = document.getElementById('closeAddSkillBtn');
+            const addCancelBtn = document.getElementById('addCancelBtn');
+            const addRegenBtn = document.getElementById('addRegenBtn');
+            const addConfirmBtn = document.getElementById('addConfirmBtn');
+            const templateGrid = document.getElementById('templateGrid');
+            const addSkillInput = document.getElementById('addSkillInput');
+            const previewBox = document.getElementById('previewBox');
+            const previewName = document.getElementById('previewName');
+            const previewDesc = document.getElementById('previewDesc');
+            const previewCode = document.getElementById('previewCode');
+
+            let pendingSkill = null;       // {name, desc, code}
+            let selectedTemplate = null;   // 当前选中的模板名
+            let previewTimer = null;
+            let previewSeq = 0;
+
+            async function openAddSkillModal() {
+                addSkillModal.classList.add('active');
+                resetAddView();
+                try {
+                    const res = await fetch('/skills/templates');
+                    const data = await res.json();
+                    const templates = data.templates || [];
+                    templateGrid.innerHTML = templates.map(t => {
+                        const cls = t.available ? '' : ' disabled';
+                        const req = t.available ? '' : `（需：${(t.requires || []).join('、')}）`;
+                        return `<button class="${cls}" data-name="${escapeHtml(t.name)}" ${t.available ? '' : 'disabled'}>${escapeHtml(t.description)}${req}</button>`;
+                    }).join('');
+                } catch {
+                    templateGrid.innerHTML = '<p style="color:#8a9aae;font-size:12px;">模板加载失败</p>';
+                }
+                addSkillInput.focus();
+            }
+
+            function resetAddView() {
+                selectedTemplate = null;
+                pendingSkill = null;
+                previewBox.style.display = 'none';
+                addRegenBtn.style.display = 'none';
+                addConfirmBtn.disabled = true;
+                addSkillInput.value = '';
+            }
+
+            templateGrid.addEventListener('click', (e) => {
+                const btn = e.target.closest('button[data-name]');
+                if (!btn || btn.disabled) return;
+                selectedTemplate = btn.dataset.name;
+                addSkillInput.value = btn.textContent.replace(/（需：.*）$/, '').trim();
+                preview();
+            });
+
+            addSkillInput.addEventListener('input', () => {
+                clearTimeout(previewTimer);
+                previewTimer = setTimeout(preview, 600);
+            });
+            addSkillInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    preview();
+                }
+            });
+
+            async function preview() {
+                const description = addSkillInput.value.trim();
+                const body = selectedTemplate ? { template: selectedTemplate } : (description ? { description } : null);
+                if (!body) return;
+                const seq = ++previewSeq;
+                try {
+                    const res = await fetch('/skills/preview', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(body)
+                    });
+                    const data = await res.json();
+                    if (seq !== previewSeq) return;  // 过期响应丢弃
+                    if (!res.ok || !data.success) {
+                        previewBox.style.display = 'none';
+                        addConfirmBtn.disabled = true;
+                        showToast(data.error || '预览失败');
+                        return;
+                    }
+                    pendingSkill = data.preview;
+                    previewName.textContent = pendingSkill.name;
+                    previewDesc.textContent = pendingSkill.desc;
+                    previewCode.textContent = pendingSkill.code;
+                    previewBox.style.display = 'block';
+                    addRegenBtn.style.display = 'block';
+                    addConfirmBtn.disabled = false;
+                } catch (err) {
+                    if (seq === previewSeq) {
+                        previewBox.style.display = 'none';
+                        addConfirmBtn.disabled = true;
+                        showToast('预览请求失败');
+                    }
+                }
+            }
+
+            addRegenBtn.addEventListener('click', preview);
+
+            addConfirmBtn.addEventListener('click', async () => {
+                if (!pendingSkill) return;
+                addConfirmBtn.disabled = true;
+                try {
+                    const res = await fetch('/skills/confirm', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            name: pendingSkill.name,
+                            code: pendingSkill.code,
+                            desc: pendingSkill.desc
+                        })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        showToast(`✅ ${data.message}`);
+                        addSkillModal.classList.remove('active');
+                        resetAddView();
+                        updateSkillCount();
+                    } else {
+                        addConfirmBtn.disabled = false;
+                        showToast(data.error || '添加失败');
+                    }
+                } catch (err) {
+                    addConfirmBtn.disabled = false;
+                    showToast('添加请求失败');
+                }
+            });
+
+            function closeAddSkillModal() {
+                addSkillModal.classList.remove('active');
+                resetAddView();
+            }
+            addSkillBtn.addEventListener('click', openAddSkillModal);
+            closeAddSkillBtn.addEventListener('click', closeAddSkillModal);
+            addCancelBtn.addEventListener('click', closeAddSkillModal);
+            addSkillModal.addEventListener('click', (e) => {
+                if (e.target === addSkillModal) closeAddSkillModal();
             });
 
             // ===== 事件绑定 =====

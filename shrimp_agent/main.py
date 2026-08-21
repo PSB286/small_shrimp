@@ -165,6 +165,119 @@ async def update_environment(request: Request):
 
 # ==================== 技能管理接口 ====================
 
+# 技能模板列表（新增技能界面用）
+@app.get("/skills/templates")
+async def get_skill_templates():
+    """返回可用的技能模板（含可用状态）"""
+    try:
+        from core.skill_factory import list_available_templates
+        caps = agent.capabilities or capabilities
+        return JSONResponse({
+            "success": True,
+            "templates": list_available_templates(caps)
+        })
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# 技能预览（生成但不保存，供用户确认）
+@app.post("/skills/preview")
+async def preview_skill(request: Request):
+    """预览技能：template=模板名 或 description=需求描述 → 返回 {name, desc, code}"""
+    try:
+        from core.skill_factory import (
+            render_template, generate_skill, polish_skill_code,
+            validate_code, sanitize_filename, extract_skill_info,
+        )
+        data = await request.json()
+        caps = agent.capabilities or capabilities
+
+        template_name = data.get("template")
+        description = data.get("description", "").strip()
+
+        if template_name:
+            code = render_template(template_name, caps, description or None)
+            if not code:
+                return JSONResponse({"error": f"模板 {template_name} 不可用"}, status_code=400)
+            name, desc = extract_skill_info(code)
+            name = sanitize_filename(name or template_name, template_name)
+        elif description:
+            result = generate_skill(description, caps, memory.get_history())
+            if not result:
+                return JSONResponse({"error": "生成失败：需求不明确或本环境能力不足"}, status_code=400)
+            code, name, desc, msgs = result
+            name = sanitize_filename(name, "new_skill")
+            # 自打磨：保证初版可用
+            polished, rounds, log = polish_skill_code(code, desc, caps)
+            if polished is None:
+                return JSONResponse({"error": f"技能未能通过自动打磨：{log[-1] if log else '未知'}"}, status_code=400)
+            if rounds > 0:
+                code = polished
+        else:
+            return JSONResponse({"error": "缺少 template 或 description"}, status_code=400)
+
+        check = validate_code(code, caps)
+        if not check["ok"]:
+            return JSONResponse({"error": "校验未通过: %s" % check["violations"][0]}, status_code=400)
+
+        return JSONResponse({
+            "success": True,
+            "preview": {
+                "name": name,
+                "desc": desc or description or template_name,
+                "code": code,
+            }
+        })
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# 确认添加技能（用户打勾确认后才真正保存）
+@app.post("/skills/confirm")
+async def confirm_skill(request: Request):
+    """保存用户确认过的技能代码：{name, code, desc} → 写入 skills/ 并热重载"""
+    try:
+        from core.skill_factory import validate_code, sanitize_filename
+        data = await request.json()
+        name = sanitize_filename(data.get("name"), "new_skill")
+        code = data.get("code", "")
+        desc = data.get("desc", "")
+
+        if not code or len(code) < 30:
+            return JSONResponse({"error": "技能代码无效"}, status_code=400)
+
+        caps = agent.capabilities or capabilities
+        check = validate_code(code, caps)
+        if not check["ok"]:
+            return JSONResponse({"error": "校验未通过: %s" % check["violations"][0]}, status_code=400)
+
+        # 名字冲突自动加后缀
+        filepath = os.path.join(skill_mgr.skills_dir, f"{name}.py")
+        counter = 2
+        while os.path.exists(filepath) and counter <= 10:
+            filepath = os.path.join(skill_mgr.skills_dir, f"{name}_{counter}.py")
+            counter += 1
+        if os.path.exists(filepath):
+            return JSONResponse({"error": f"技能 {name} 已存在且无法自动改名"}, status_code=400)
+        final_name = os.path.splitext(os.path.basename(filepath))[0]
+
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write(code)
+        skill_mgr.reload_skills()
+        agent.skills.reload_skills()
+        agent.cloud.set_skills_info(agent.skills.get_skills_info())
+        agent._update_memory_context()
+        agent.permanent_memory.add_fact(f"学会了技能 {final_name}：{desc}", "skills")
+
+        return JSONResponse({
+            "success": True,
+            "skill_name": final_name,
+            "message": f"技能 {final_name} 已添加"
+        })
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 # 定义 /skills 路径的 GET 处理函数，返回所有技能（含已禁用，带开关状态）
 @app.get("/skills")
 async def get_skills():

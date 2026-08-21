@@ -11,15 +11,22 @@ from config import settings
 from templates.skill_templates import TEMPLATES, list_templates
 
 
-def test_templates_empty():
-    """最简状态：不预置任何技能模板"""
-    assert TEMPLATES == {}
-    assert list_templates() == {}
+def test_templates_present():
+    """通用模板库非空，且 web_search 需要 network 能力"""
+    assert len(TEMPLATES) >= 5
+    assert "calc" in TEMPLATES
+    assert "web_search" in TEMPLATES
+    assert "network" in TEMPLATES["web_search"]["requires"]
 
 
-def test_available_templates_empty():
+def test_available_templates_by_capability():
+    """无网络能力时 web_search 不可用，其余通用模板可用"""
     names = skill_factory.available_templates({})
-    assert names == []
+    assert "calc" in names
+    assert "show_time" in names
+    assert "web_search" not in names  # 需要 network
+    names2 = skill_factory.available_templates({"network": True})
+    assert "web_search" in names2
 
 
 def test_render_template_none():
@@ -222,8 +229,8 @@ def test_polish_good_no_llm_needed():
 
 
 if __name__ == "__main__":
-    test_templates_empty()
-    test_available_templates_empty()
+    test_templates_present()
+    test_available_templates_by_capability()
     test_render_template_none()
     test_template_available_false()
     test_generate_offline_returns_none()

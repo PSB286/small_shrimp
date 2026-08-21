@@ -102,7 +102,25 @@ def template_available(template_name, capabilities):
             return False
         if req == "audio_in" and not capabilities.get("audio_in"):
             return False
+        if req == "network" and not capabilities.get("network"):
+            return False
     return True
+
+
+def list_available_templates(capabilities):
+    """
+    返回模板列表（含可用状态），供"新增技能"界面使用。
+    返回 [{"name", "description", "requires", "available"}]
+    """
+    result = []
+    for name, template in TEMPLATES.items():
+        result.append({
+            "name": name,
+            "description": template.get("description", ""),
+            "requires": template.get("requires", []),
+            "available": template_available(name, capabilities),
+        })
+    return result
 
 
 def available_templates(capabilities):
@@ -775,18 +793,16 @@ def _environment_guide(capabilities):
 
 
 def _generate_from_template_match(description, capabilities):
-    """按需求关键词匹配模板（离线兜底）。
-
-    当前模板库为空（最简状态），直接返回 None；
-    将来在 templates/skill_templates.py 添加模板后，此函数按关键词匹配生成。
-    """
+    """按需求关键词匹配模板（离线兜底）：模板名或其简称（"（"前）出现在需求中即命中"""
     if not TEMPLATES:
         return None
     for name, template in TEMPLATES.items():
-        if template_available(name, capabilities):
-            desc = template.get("description", "")
-            if any(k in description for k in [name, desc]):
-                return render_template(name, capabilities, description)
+        if not template_available(name, capabilities):
+            continue
+        desc = template.get("description", "")
+        short = desc.split("（")[0].strip() or desc
+        if name in description or (short and short in description):
+            return render_template(name, capabilities, description)
     return None
 
 
@@ -808,11 +824,17 @@ def load_capabilities():
 def bootstrap_skills(skill_manager=None, capabilities=None):
     """
     按能力清单自动生成本环境缺失的基础技能。
+    只引导显式声明 "bootstrap": true 的模板（如未来硬件环境的基础动作），
+    通用模板不会自动创建——统一走"新增技能 → 预览 → 确认"流程。
     返回新创建的技能文件名列表。
     """
     caps = capabilities if capabilities is not None else load_capabilities()
     created = []
-    for name in available_templates(caps):
+    for name, template in TEMPLATES.items():
+        if not template.get("bootstrap"):
+            continue  # 未声明 bootstrap 的模板不自动创建
+        if not template_available(name, caps):
+            continue
         filepath = os.path.join(settings.skills_dir, name + ".py")
         if os.path.exists(filepath):
             continue
