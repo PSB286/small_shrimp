@@ -24,7 +24,64 @@
             --shadow: rgba(21, 118, 136, 0.12);
             --success: #4ac99b;
             --danger: #ff7d7d;
+            --bubble-bot: rgba(255, 255, 255, 0.96);
+            --bubble-bot-border: rgba(30, 201, 217, 0.16);
+            --code-bg: linear-gradient(180deg, #f7feff, #eefafc);
+            --code-color: #24292e;
+            --input-bg: rgba(255, 255, 255, 0.9);
+            --header-bg: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(233,252,255,0.92));
+            --input-area-bg: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(232,252,255,0.9));
+            --qa-bg: rgba(250, 254, 255, 0.8);
         }
+
+        /* ===== 暗色主题 ===== */
+        body.dark {
+            --bg: #0c1a23;
+            --bg-deep: #09141c;
+            --panel: #142430;
+            --panel-alt: #101d27;
+            --primary: #2ad4e6;
+            --primary-dark: #1fb7c9;
+            --primary-soft: #12333c;
+            --secondary: #ffb774;
+            --secondary-soft: #3a2a16;
+            --border: #1c3a46;
+            --text: #d8ecef;
+            --muted: #8aa6b0;
+            --muted-strong: #b5d0d8;
+            --shadow: rgba(0, 0, 0, 0.45);
+            --success: #4ac99b;
+            --danger: #ff7d7d;
+            --bubble-bot: rgba(23, 41, 53, 0.96);
+            --bubble-bot-border: rgba(42, 212, 230, 0.16);
+            --code-bg: linear-gradient(180deg, #10232e, #0d1f29);
+            --code-color: #d6e7ec;
+            --input-bg: rgba(20, 36, 48, 0.9);
+            --header-bg: linear-gradient(180deg, rgba(20, 36, 48, 0.96), rgba(16, 33, 44, 0.92));
+            --input-area-bg: linear-gradient(180deg, rgba(20, 36, 48, 0.96), rgba(14, 30, 40, 0.9));
+            --qa-bg: rgba(14, 30, 40, 0.85);
+        }
+        body.dark .chat-box {
+            background: linear-gradient(180deg, rgba(20, 36, 48, 0.98), rgba(16, 29, 39, 0.96));
+        }
+        body.dark .msg.bot code {
+            background: linear-gradient(180deg, #12303b, #16313d);
+            color: #6fe3f0;
+        }
+        body.dark .typing-indicator {
+            background: var(--panel);
+            border-color: var(--border);
+            color: var(--muted);
+        }
+        body.dark .skill-item .name { color: var(--text); }
+        body.dark .env-row .v { color: var(--text); }
+        body.dark .add-input { background: var(--input-bg); color: var(--text); }
+
+        /* ===== 字号调节 ===== */
+        body[data-fs="sm"] .msg { font-size: 13.5px; }
+        body[data-fs="lg"] .msg { font-size: 16px; }
+        body[data-fs="sm"] .input-area textarea { font-size: 13.5px; }
+        body[data-fs="lg"] .input-area textarea { font-size: 16px; }
 
         /* ===== 全局重置 ===== */
         * {
@@ -36,6 +93,9 @@
 
         html {
             color-scheme: light;
+        }
+        body.dark {
+            color-scheme: dark;
         }
 
         body {
@@ -49,6 +109,7 @@
             min-height: 100vh;
             padding: 16px;
             color: var(--text);
+            transition: background 0.3s, color 0.3s;
         }
 
         .chat-box {
@@ -64,11 +125,12 @@
             overflow: hidden;
             border: 1px solid rgba(20, 166, 186, 0.08);
             position: relative;
+            transition: background 0.3s;
         }
 
         /* ===== 头部 ===== */
         .header {
-            background: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(233,252,255,0.92));
+            background: var(--header-bg);
             backdrop-filter: blur(8px);
             padding: 14px 20px;
             display: flex;
@@ -148,16 +210,16 @@
 
         .header .actions {
             display: flex;
-            gap: 4px;
+            gap: 3px;
         }
 
         .header .actions button {
             background: rgba(30, 201, 217, 0.08);
             border: none;
             cursor: pointer;
-            font-size: 17px;
+            font-size: 16px;
             color: var(--muted-strong);
-            padding: 6px 8px;
+            padding: 6px 7px;
             border-radius: 12px;
             transition: background 0.15s, transform 0.1s;
             line-height: 1;
@@ -181,6 +243,7 @@
                 radial-gradient(circle at 10% 0%, rgba(30, 201, 217, 0.06), transparent 20%),
                 radial-gradient(circle at 90% 100%, rgba(255, 183, 116, 0.09), transparent 24%),
                 var(--panel-alt);
+            transition: background 0.3s;
         }
 
         .messages::-webkit-scrollbar {
@@ -192,6 +255,9 @@
         .messages::-webkit-scrollbar-thumb {
             background: #d0d7de;
             border-radius: 8px;
+        }
+        body.dark .messages::-webkit-scrollbar-thumb {
+            background: #2b4a58;
         }
 
         /* ===== 消息气泡 ===== */
@@ -216,11 +282,23 @@
 
         .msg.bot {
             align-self: flex-start;
-            background: rgba(255,255,255,0.96);
+            background: var(--bubble-bot);
             color: var(--text);
-            border: 1px solid rgba(30, 201, 217, 0.16);
+            border: 1px solid var(--bubble-bot-border);
             border-bottom-left-radius: 4px;
             box-shadow: 0 6px 16px rgba(18, 52, 67, 0.04);
+        }
+
+        /* 错误/警告消息高亮（调试友好） */
+        .msg.bot.error {
+            border-color: rgba(255, 125, 125, 0.45);
+            background: linear-gradient(180deg, rgba(255, 125, 125, 0.07), rgba(255, 125, 125, 0.03));
+        }
+        body.dark .msg.bot.error {
+            background: linear-gradient(180deg, rgba(255, 125, 125, 0.12), rgba(255, 125, 125, 0.05));
+        }
+        .msg.bot.error .label {
+            color: var(--danger);
         }
 
         .msg.bot .label {
@@ -231,7 +309,7 @@
             letter-spacing: 0.04em;
         }
 
-        /* 消息元信息：时间 + 操作按钮 */
+        /* 消息元信息：时间 + 耗时 + 操作按钮 */
         .msg .meta {
             display: flex;
             align-items: center;
@@ -251,6 +329,10 @@
         }
         .msg.user .meta .time {
             color: rgba(255, 255, 255, 0.75);
+        }
+        .msg .meta .time .elapsed {
+            margin-left: 6px;
+            color: rgba(93, 125, 136, 0.55);
         }
 
         .msg .meta .msg-actions {
@@ -323,20 +405,42 @@
             color: #0f7d87;
         }
         .msg.bot pre {
-            background: linear-gradient(180deg, #f7feff, #eefafc);
-            padding: 10px 14px;
+            position: relative;
+            background: var(--code-bg);
+            padding: 12px 14px;
             border-radius: 10px;
             overflow-x: auto;
             margin: 6px 0;
             border: 1px solid rgba(30, 201, 217, 0.16);
             font-family: 'SF Mono', 'Fira Code', monospace;
-            font-size: 13px;
+            font-size: 12.5px;
             line-height: 1.5;
         }
         .msg.bot pre code {
             background: transparent;
             padding: 0;
-            color: #24292e;
+            color: var(--code-color);
+        }
+        .msg.bot h3 {
+            font-size: 15px;
+            margin: 8px 0 4px 0;
+        }
+        .msg.bot table {
+            border-collapse: collapse;
+            margin: 6px 0;
+            font-size: 13px;
+            max-width: 100%;
+            display: block;
+            overflow-x: auto;
+        }
+        .msg.bot table th, .msg.bot table td {
+            border: 1px solid rgba(30, 201, 217, 0.25);
+            padding: 4px 10px;
+            text-align: left;
+        }
+        .msg.bot table th {
+            background: var(--primary-soft);
+            color: var(--muted-strong);
         }
         .msg.bot strong {
             font-weight: 600;
@@ -353,6 +457,29 @@
         }
         .msg.bot p:last-child {
             margin-bottom: 0;
+        }
+
+        /* 代码块复制按钮 */
+        .code-copy {
+            position: absolute;
+            top: 6px;
+            right: 8px;
+            background: rgba(30, 201, 217, 0.12);
+            border: none;
+            border-radius: 7px;
+            padding: 2px 9px;
+            font-size: 11px;
+            color: var(--muted-strong);
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.15s;
+            font-family: inherit;
+        }
+        .msg.bot pre:hover .code-copy {
+            opacity: 1;
+        }
+        .code-copy:hover {
+            background: rgba(30, 201, 217, 0.22);
         }
 
         /* 思考消息特殊样式 */
@@ -386,8 +513,8 @@
         /* ===== 打字指示器 ===== */
         .typing-indicator {
             align-self: flex-start;
-            background: #ffffff;
-            border: 1px solid #e8ecf0;
+            background: var(--bubble-bot);
+            border: 1px solid var(--border);
             padding: 10px 18px;
             border-radius: 16px;
             border-bottom-left-radius: 4px;
@@ -395,7 +522,7 @@
             align-items: center;
             gap: 8px;
             font-size: 14px;
-            color: #8a9aae;
+            color: var(--muted);
             box-shadow: 0 1px 4px rgba(0, 0, 0, 0.02);
             animation: fadeUp 0.2s ease-out;
         }
@@ -433,13 +560,14 @@
             display: flex;
             flex-wrap: wrap;
             gap: 6px;
-            background: rgba(250, 254, 255, 0.8);
+            background: var(--qa-bg);
             border-top: 1px solid rgba(30, 201, 217, 0.1);
             flex-shrink: 0;
+            transition: background 0.3s;
         }
 
         .quick-actions button {
-            background: linear-gradient(180deg, #ecfeff, #f8fdff);
+            background: linear-gradient(180deg, rgba(236, 254, 255, 0.6), rgba(248, 253, 255, 0.6));
             border: 1px solid rgba(30, 201, 217, 0.14);
             border-radius: 999px;
             padding: 5px 13px;
@@ -451,8 +579,11 @@
             white-space: nowrap;
             box-shadow: 0 4px 10px rgba(30, 201, 217, 0.04);
         }
+        body.dark .quick-actions button {
+            background: linear-gradient(180deg, rgba(20, 40, 52, 0.8), rgba(18, 35, 46, 0.8));
+        }
         .quick-actions button:hover {
-            background: linear-gradient(180deg, #dcfbff, #f1fcff);
+            background: var(--primary-soft);
             color: var(--text);
             transform: translateY(-1px);
         }
@@ -519,9 +650,10 @@
             align-items: flex-end;
             padding: 10px 16px 14px 16px;
             border-top: 1px solid rgba(30, 201, 217, 0.1);
-            background: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(232,252,255,0.9));
+            background: var(--input-area-bg);
             gap: 10px;
             flex-shrink: 0;
+            transition: background 0.3s;
         }
 
         .input-wrap {
@@ -538,7 +670,7 @@
             border-radius: 20px;
             outline: none;
             font-size: 15px;
-            background: rgba(255,255,255,0.9);
+            background: var(--input-bg);
             color: var(--text);
             transition: border 0.2s, box-shadow 0.2s;
             line-height: 1.5;
@@ -604,7 +736,7 @@
             opacity: 0;
             pointer-events: none;
             transition: opacity 0.25s, transform 0.25s;
-            z-index: 200;
+            z-index: 300;
         }
         .toast.show {
             opacity: 1;
@@ -621,11 +753,14 @@
             height: 100%;
             background: rgba(0, 0, 0, 0.3);
             backdrop-filter: blur(4px);
-            z-index: 100;
+            z-index: 200;
             border-radius: 24px;
             justify-content: center;
             align-items: center;
             animation: fadeIn 0.2s ease-out;
+        }
+        body.dark .modal-overlay {
+            background: rgba(0, 0, 0, 0.55);
         }
 
         .modal-overlay.active {
@@ -638,9 +773,9 @@
         }
 
         .modal {
-            background: linear-gradient(180deg, #ffffff, #f4fdff);
+            background: linear-gradient(180deg, var(--panel), var(--panel-alt));
             width: 92%;
-            max-width: 440px;
+            max-width: 460px;
             max-height: 82%;
             border-radius: 22px;
             box-shadow: 0 24px 60px rgba(18, 76, 85, 0.16);
@@ -650,6 +785,7 @@
             overflow: hidden;
             animation: slideUp 0.25s ease-out;
             border: 1px solid rgba(30, 201, 217, 0.12);
+            color: var(--text);
         }
 
         @keyframes slideUp {
@@ -683,12 +819,12 @@
             border: none;
             font-size: 24px;
             cursor: pointer;
-            color: #8a9aae;
+            color: var(--muted);
             padding: 0 4px;
             transition: color 0.15s;
         }
         .modal-header .close-btn:hover {
-            color: #1a2332;
+            color: var(--text);
         }
 
         .modal-body {
@@ -703,6 +839,9 @@
         .modal-body::-webkit-scrollbar-thumb {
             background: #d0d7de;
             border-radius: 8px;
+        }
+        body.dark .modal-body::-webkit-scrollbar-thumb {
+            background: #2b4a58;
         }
 
         .skill-item {
@@ -827,7 +966,7 @@
             margin-bottom: 12px;
         }
         .template-grid button {
-            background: linear-gradient(180deg, #ecfeff, #f8fdff);
+            background: linear-gradient(180deg, rgba(236, 254, 255, 0.6), rgba(248, 253, 255, 0.6));
             border: 1px solid rgba(30, 201, 217, 0.18);
             border-radius: 999px;
             padding: 5px 12px;
@@ -836,6 +975,9 @@
             cursor: pointer;
             transition: all 0.15s;
             font-family: inherit;
+        }
+        body.dark .template-grid button {
+            background: linear-gradient(180deg, rgba(20, 40, 52, 0.8), rgba(18, 35, 46, 0.8));
         }
         .template-grid button:hover:not(:disabled) {
             background: var(--primary-soft);
@@ -855,7 +997,7 @@
             outline: none;
             font-size: 13.5px;
             color: var(--text);
-            background: rgba(255,255,255,0.9);
+            background: var(--input-bg);
             margin-bottom: 8px;
             font-family: inherit;
             box-sizing: border-box;
@@ -867,7 +1009,7 @@
 
         .preview-box {
             display: none;
-            background: linear-gradient(180deg, #f7feff, #eefafc);
+            background: var(--code-bg);
             border: 1px solid rgba(30, 201, 217, 0.16);
             border-radius: 12px;
             padding: 10px 12px;
@@ -889,7 +1031,7 @@
             font-family: 'SF Mono', 'Fira Code', monospace;
             font-size: 12px;
             line-height: 1.5;
-            color: #24292e;
+            color: var(--code-color);
             white-space: pre-wrap;
             word-break: break-all;
         }
@@ -930,8 +1072,63 @@
             color: var(--muted-strong);
         }
         .add-actions .btn-cancel {
-            background: #f0f3f5;
+            background: rgba(240, 243, 245, 0.6);
             color: var(--muted);
+        }
+
+        /* ===== 设置面板 ===== */
+        .set-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 2px;
+            border-bottom: 1px solid rgba(30, 201, 217, 0.1);
+            font-size: 13.5px;
+        }
+        .set-row .k {
+            color: var(--muted-strong);
+        }
+        .set-row .v {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+        .set-row button {
+            background: var(--primary-soft);
+            border: none;
+            border-radius: 10px;
+            padding: 6px 12px;
+            font-size: 12.5px;
+            color: var(--muted-strong);
+            cursor: pointer;
+            font-family: inherit;
+            transition: background 0.15s, transform 0.1s;
+        }
+        .set-row button:hover {
+            background: rgba(30, 201, 217, 0.18);
+        }
+        .set-row button:active {
+            transform: scale(0.95);
+        }
+        .set-row button.danger {
+            background: rgba(255, 125, 125, 0.12);
+            color: var(--danger);
+        }
+
+        /* ===== 原始消息查看 ===== */
+        .raw-box {
+            background: var(--code-bg);
+            border: 1px solid rgba(30, 201, 217, 0.16);
+            border-radius: 12px;
+            padding: 12px;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 12.5px;
+            color: var(--code-color);
+            white-space: pre-wrap;
+            word-break: break-all;
+            max-height: 50vh;
+            overflow: auto;
+            line-height: 1.6;
         }
 
         /* ===== 响应式 ===== */
@@ -993,6 +1190,10 @@
                 max-height: 90%;
                 padding: 16px 18px;
             }
+            .header .actions button {
+                font-size: 14px;
+                padding: 5px 5px;
+            }
         }
     </style>
 </head>
@@ -1015,6 +1216,8 @@
                 <button id="envBtn" title="环境能力" aria-label="环境能力">🖥️</button>
                 <button id="addSkillBtn" title="新增技能" aria-label="新增技能">➕</button>
                 <button id="manageSkillsBtn" title="管理技能" aria-label="管理技能">⚙️</button>
+                <button id="themeBtn" title="切换明暗主题" aria-label="切换主题">🌓</button>
+                <button id="settingsBtn" title="设置与调试" aria-label="设置">⋯</button>
                 <button id="clearBtn" title="清空对话" aria-label="清空对话">🗑️</button>
             </div>
         </div>
@@ -1029,7 +1232,7 @@
             <button data-msg="你好">👋 打招呼</button>
             <button data-msg="查看记忆">📚 记忆</button>
             <button data-msg="列出技能">📜 技能</button>
-            <button data-msg="新增技能：打开记事本">✨ 学新技能</button>
+            <button data-msg="学习技能：材料：电脑记事本，学习内容：使用记事本，要学习到：完全掌握">📖 学习技能</button>
         </div>
 
         <!-- 引用条 -->
@@ -1076,7 +1279,7 @@
             </div>
         </div>
 
-        <!-- 新增技能模态框（模板 + 预览 + 确认） -->
+        <!-- 新增技能模态框（模板 + 学习三要素 + 预览 + 确认） -->
         <div class="modal-overlay" id="addSkillModal">
             <div class="modal" role="dialog" aria-modal="true" aria-labelledby="addSkillTitle">
                 <div class="modal-header">
@@ -1109,6 +1312,57 @@
                 </div>
             </div>
         </div>
+
+        <!-- 设置与调试模态框 -->
+        <div class="modal-overlay" id="settingsModal">
+            <div class="modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+                <div class="modal-header">
+                    <h2 id="settingsTitle">⚙️ 设置与调试</h2>
+                    <button class="close-btn" id="closeSettingsBtn">✕</button>
+                </div>
+                <div class="modal-body">
+                    <div class="set-row">
+                        <span class="k">字号</span>
+                        <span class="v">
+                            <button id="fsDecBtn">A−</button>
+                            <button id="fsIncBtn">A+</button>
+                            <button id="fsResetBtn">默认</button>
+                        </span>
+                    </div>
+                    <div class="set-row">
+                        <span class="k">对话数据</span>
+                        <span class="v">
+                            <button id="exportBtn">⬇ 导出</button>
+                        </span>
+                    </div>
+                    <div class="set-row">
+                        <span class="k">发送记录（↑ 键历史）</span>
+                        <span class="v">
+                            <button class="danger" id="clearHistoryBtn">清空</button>
+                        </span>
+                    </div>
+                    <div class="set-row">
+                        <span class="k">清空当前对话</span>
+                        <span class="v">
+                            <button class="danger" id="clearChatBtn">清空</button>
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 原始消息查看模态框 -->
+        <div class="modal-overlay" id="rawModal">
+            <div class="modal" role="dialog" aria-modal="true" aria-labelledby="rawTitle">
+                <div class="modal-header">
+                    <h2 id="rawTitle">📄 原始消息</h2>
+                    <button class="close-btn" id="closeRawBtn">✕</button>
+                </div>
+                <div class="modal-body">
+                    <div class="raw-box" id="rawBox"></div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <div class="toast" id="toast"></div>
@@ -1124,10 +1378,11 @@
             const statusText = document.getElementById('statusText');
             const statusDot = document.getElementById('statusDot');
             const skillCount = document.getElementById('skillCount');
-            const agentName = document.getElementById('agentName');
             const manageBtn = document.getElementById('manageSkillsBtn');
             const clearBtn = document.getElementById('clearBtn');
             const envBtn = document.getElementById('envBtn');
+            const themeBtn = document.getElementById('themeBtn');
+            const settingsBtn = document.getElementById('settingsBtn');
             const modal = document.getElementById('skillsModal');
             const closeModalBtn = document.getElementById('closeModalBtn');
             const skillList = document.getElementById('skillList');
@@ -1139,28 +1394,57 @@
             const quoteText = document.getElementById('quoteText');
             const quoteClose = document.getElementById('quoteClose');
             const toast = document.getElementById('toast');
+            const settingsModal = document.getElementById('settingsModal');
+            const closeSettingsBtn = document.getElementById('closeSettingsBtn');
+            const rawModal = document.getElementById('rawModal');
+            const closeRawBtn = document.getElementById('closeRawBtn');
+            const rawBox = document.getElementById('rawBox');
 
             let isWaiting = false;
             let skillsCache = {};
             let quoteState = null;          // { role: 'user'|'bot', content: string }
+            let messagesData = [];          // {role, content, quote, time, elapsed} 用于导出/调试
+
+            // ===== 主题与字号（持久化） =====
+            function applyTheme(dark) {
+                document.body.classList.toggle('dark', dark);
+                themeBtn.textContent = dark ? '☀️' : '🌙';
+            }
+            try {
+                applyTheme(localStorage.getItem('shrimp_theme') === 'dark');
+            } catch (e) {}
+            themeBtn.addEventListener('click', () => {
+                const dark = !document.body.classList.contains('dark');
+                applyTheme(dark);
+                try { localStorage.setItem('shrimp_theme', dark ? 'dark' : 'light'); } catch (e) {}
+            });
+
+            const FS = ['sm', 'md', 'lg'];
+            let fsIndex = 1;
+            try { fsIndex = Math.max(0, Math.min(2, FS.indexOf(localStorage.getItem('shrimp_fs') || 'md'))); } catch (e) {}
+            document.body.dataset.fs = FS[fsIndex];
+            function saveFs() {
+                document.body.dataset.fs = FS[fsIndex];
+                try { localStorage.setItem('shrimp_fs', FS[fsIndex]); } catch (e) {}
+            }
+            document.getElementById('fsDecBtn').addEventListener('click', () => { fsIndex = Math.max(0, fsIndex - 1); saveFs(); });
+            document.getElementById('fsIncBtn').addEventListener('click', () => { fsIndex = Math.min(2, fsIndex + 1); saveFs(); });
+            document.getElementById('fsResetBtn').addEventListener('click', () => { fsIndex = 1; saveFs(); });
 
             // ===== 发送历史（↑↓ 键浏览，localStorage 持久化） =====
             const HISTORY_KEY = 'shrimp_sent_history';
             let sentHistory = [];
-            let historyIndex = -1;          // -1 = 未在浏览历史
-            let historyDraft = '';          // 进入历史前保存的草稿
+            let historyIndex = -1;
+            let historyDraft = '';
 
             try {
                 const saved = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
                 if (Array.isArray(saved)) sentHistory = saved.filter(s => typeof s === 'string');
-            } catch (e) { /* ignore */ }
+            } catch (e) {}
 
             function saveHistory() {
-                try {
-                    localStorage.setItem(HISTORY_KEY, JSON.stringify(sentHistory.slice(-100)));
-                } catch (e) { /* ignore */ }
+                try { localStorage.setItem(HISTORY_KEY, JSON.stringify(sentHistory.slice(-100))); } catch (e) {}
             }
-
             function pushHistory(text) {
                 const last = sentHistory[sentHistory.length - 1];
                 if (last !== text) sentHistory.push(text);
@@ -1216,7 +1500,19 @@
                 }
             }
 
-            // ===== Markdown 渲染（修复代码块二次转义） =====
+            // ===== Markdown 渲染（代码块/行内代码/粗体/链接/标题/表格） =====
+            function renderTable(match, headerLine, sepLine, bodyLines) {
+                const header = headerLine.replace(/^\||\|$/g, '').split('|').map(c => escapeHtml(c.trim()));
+                const rows = (bodyLines || '').trim().split('\n')
+                    .filter(l => l.includes('|'))
+                    .map(l => l.replace(/^\||\|$/g, '').split('|').map(c => escapeHtml(c.trim())));
+                let html = '<table><thead><tr>' + header.map(h => `<th>${h}</th>`).join('') + '</tr></thead><tbody>';
+                rows.forEach(r => {
+                    html += '<tr>' + r.map(c => `<td>${c}</td>`).join('') + '</tr>';
+                });
+                return html + '</tbody></table>';
+            }
+
             function formatBotMarkdown(text) {
                 const blocks = [];
                 let html = String(text).replace(/```([\s\S]*?)```/g, (_, code) => {
@@ -1224,16 +1520,27 @@
                     return '\u0000CODE' + (blocks.length - 1) + '\u0000';
                 });
                 html = escapeHtml(html);
-                html = html.replace(/\u0000CODE(\d+)\u0000/g, (_, i) => `<pre><code>${escapeHtml(blocks[+i])}</code></pre>`);
+                html = html.replace(/\u0000CODE(\d+)\u0000/g, (_, i) => `<pre><code>${escapeHtml(blocks[+i])}</code><button class="code-copy">复制</button></pre>`);
                 html = html.replace(/`([^`]+)`/g, (_, c) => `<code>${escapeHtml(c)}</code>`);
                 html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
                 html = html.replace(/\[(.+?)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+                // 表格（先于换行处理）
+                html = html.replace(/\|(.+)\|\s*\n\|[\s:|-]+\|\s*\n((?:\|.+\|\s*\n?)*)/g, renderTable);
+                // 标题
+                html = html.replace(/^###\s+(.+)$/gm, '<h3>$1</h3>');
+                html = html.replace(/^##\s+(.+)$/gm, '<h3>$1</h3>');
+                html = html.replace(/^#\s+(.+)$/gm, '<h3>$1</h3>');
                 return html.replace(/\n/g, '<br>');
             }
 
             function formatQuoteText(text) {
                 const t = String(text).replace(/\s+/g, ' ').trim();
                 return t.length > 160 ? t.slice(0, 160) + '…' : t;
+            }
+
+            function isErrorReply(text) {
+                const t = String(text).trim();
+                return t.startsWith('[错误]') || t.startsWith('❌') || t.startsWith('⚠️') || t.includes('[WinError');
             }
 
             // ===== 更新技能计数 =====
@@ -1243,7 +1550,6 @@
                     if (!res.ok) throw new Error('技能接口异常');
                     const data = await res.json();
                     const skills = data.skills || {};
-                    // 头部只显示"已启用"的技能数；skillsCache 保留全部（含禁用）供弹窗使用
                     const count = Object.values(skills).filter(s => s && s.enabled !== false).length;
                     skillCount.textContent = `${count} 个技能`;
                     skillsCache = skills;
@@ -1267,26 +1573,24 @@
                 quoteState = null;
                 quoteBar.hidden = true;
             }
-
             quoteClose.addEventListener('click', clearQuote);
 
             // ===== 消息渲染 =====
-            function renderMessage(text, isUser, quote) {
+            function renderMessage(text, isUser, quote, elapsed) {
                 const div = document.createElement('div');
                 div.className = `msg ${isUser ? 'user' : 'bot'}`;
+                if (!isUser && isErrorReply(text)) div.classList.add('error');
 
                 if (!isUser) {
                     const label = document.createElement('div');
                     label.className = 'label';
                     label.textContent = '小虾米';
                     div.appendChild(label);
-
                     if (String(text).trim().startsWith('【思考过程】')) {
                         div.classList.add('think');
                     }
                 }
 
-                // 引用块
                 if (quote && quote.content) {
                     const q = document.createElement('div');
                     q.className = 'quote';
@@ -1301,7 +1605,6 @@
                     div.appendChild(q);
                 }
 
-                // 正文（兼容截图 data URL）
                 const screenshotRegex = /!\[screenshot\]\(data:image\/png;base64,([^)]+)\)/g;
                 const matches = Array.from(String(text).matchAll(screenshotRegex));
 
@@ -1327,28 +1630,41 @@
                     div.appendChild(p);
                 }
 
-                // 元信息：时间 + 操作（复制 / 引用）
+                // 元信息：时间 + 耗时 + 操作（复制 / 引用 / 原始）
                 const meta = document.createElement('div');
                 meta.className = 'meta';
                 const time = document.createElement('span');
                 time.className = 'time';
                 time.textContent = nowTime();
+                if (elapsed != null) {
+                    const el = document.createElement('span');
+                    el.className = 'elapsed';
+                    el.textContent = `· ${elapsed.toFixed(1)}s`;
+                    el.title = '响应耗时（调试）';
+                    time.appendChild(el);
+                }
 
                 const actions = document.createElement('span');
                 actions.className = 'msg-actions';
                 const copyBtn = document.createElement('button');
                 copyBtn.textContent = '复制';
-                copyBtn.title = '复制消息';
                 copyBtn.addEventListener('click', (e) => { e.stopPropagation(); copyText(text); });
                 const quoteBtn = document.createElement('button');
                 quoteBtn.textContent = '引用';
-                quoteBtn.title = '引用这条消息';
                 quoteBtn.addEventListener('click', (e) => {
                     e.stopPropagation();
                     setQuote(isUser ? 'user' : 'bot', text);
                 });
+                const rawBtn = document.createElement('button');
+                rawBtn.textContent = '原始';
+                rawBtn.title = '查看原始消息（调试）';
+                rawBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    openRaw(text, elapsed);
+                });
                 actions.appendChild(copyBtn);
                 actions.appendChild(quoteBtn);
+                actions.appendChild(rawBtn);
 
                 meta.appendChild(time);
                 meta.appendChild(actions);
@@ -1358,14 +1674,41 @@
                 messagesDiv.scrollTop = messagesDiv.scrollHeight;
             }
 
-            function addMessage(text, isUser, quote) {
-                renderMessage(text, isUser, quote);
+            function addMessage(text, isUser, quote, elapsed) {
+                messagesData.push({
+                    role: isUser ? 'user' : 'bot',
+                    content: String(text),
+                    quote: quote ? { role: quote.role, content: quote.content } : null,
+                    time: nowTime(),
+                    elapsed: elapsed != null ? parseFloat(elapsed.toFixed(2)) : null
+                });
+                renderMessage(text, isUser, quote, elapsed);
             }
+
+            // ===== 原始消息查看 =====
+            function openRaw(text, elapsed) {
+                rawBox.textContent = String(text) + (elapsed != null ? `\n\n[耗时 ${elapsed.toFixed(1)}s]` : '');
+                rawModal.classList.add('active');
+            }
+            closeRawBtn.addEventListener('click', () => rawModal.classList.remove('active'));
+            rawModal.addEventListener('click', (e) => {
+                if (e.target === rawModal) rawModal.classList.remove('active');
+            });
+
+            // ===== 代码块复制（事件委托） =====
+            messagesDiv.addEventListener('click', (e) => {
+                const btn = e.target.closest('.code-copy');
+                if (!btn) return;
+                const pre = btn.closest('pre');
+                if (pre) {
+                    const code = pre.querySelector('code');
+                    copyText(code ? code.textContent : pre.textContent);
+                }
+            });
 
             function showTyping() {
                 const existing = document.getElementById('typingIndicator');
                 if (existing) return;
-
                 const div = document.createElement('div');
                 div.className = 'typing-indicator';
                 div.id = 'typingIndicator';
@@ -1393,7 +1736,6 @@
             }
             input.addEventListener('input', () => {
                 autoResize();
-                // 手动输入时退出历史浏览
                 if (historyIndex !== -1) historyIndex = -1;
             });
 
@@ -1409,35 +1751,34 @@
                 statusDot.classList.remove('offline');
 
                 const quote = quoteState ? { role: quoteState.role, content: quoteState.content } : null;
-
-                addMessage(text, true, quote);
+                addMessage(text, true, quote, null);
                 pushHistory(text);
 
                 input.value = '';
                 autoResize();
                 clearQuote();
                 input.focus();
-
                 showTyping();
 
+                const t0 = performance.now();
                 try {
                     const response = await fetch('/chat', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ message: text, quote: quote })
                     });
-
                     const data = await response.json();
                     hideTyping();
+                    const elapsed = (performance.now() - t0) / 1000;
 
                     if (response.ok) {
-                        addMessage(data.reply, false);
+                        addMessage(data.reply, false, null, elapsed);
                     } else {
-                        addMessage(`[错误] ${data.reply || '服务器异常'}`, false);
+                        addMessage(`[错误] ${data.reply || '服务器异常'}`, false, null, elapsed);
                     }
                 } catch (error) {
                     hideTyping();
-                    addMessage(`[错误] 连接失败: ${error.message}`, false);
+                    addMessage(`[错误] 连接失败: ${error.message}`, false, null, null);
                     statusDot.classList.add('offline');
                     statusText.textContent = '离线';
                 } finally {
@@ -1456,20 +1797,40 @@
                 while (messagesDiv.firstChild) {
                     messagesDiv.removeChild(messagesDiv.firstChild);
                 }
+                messagesData = [];
                 clearQuote();
                 setTimeout(() => {
                     addMessage('你好！我是小虾米，很高兴为你服务。', false);
                 }, 200);
             }
 
+            // ===== 导出对话（调试） =====
+            function exportChat() {
+                if (messagesData.length === 0) {
+                    showToast('暂无对话可导出');
+                    return;
+                }
+                const txt = messagesData.map(m => {
+                    const q = m.quote ? `[引用${m.quote.role === 'user' ? '你' : '小虾米'}: ${m.quote.content.slice(0, 60)}]\n` : '';
+                    const t = `${m.time}` + (m.elapsed != null ? ` [${m.elapsed}s]` : '');
+                    return `${m.role === 'user' ? '我' : '小虾米'} (${t})${q}: ${m.content}`;
+                }).join('\n\n');
+                const blob = new Blob([txt], { type: 'text/plain;charset=utf-8' });
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = `shrimp_chat_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.txt`;
+                a.click();
+                URL.revokeObjectURL(a.href);
+                showToast('已导出对话 ⬇');
+            }
+
             // ===== 技能管理 =====
             function renderSkills() {
                 const names = Object.keys(skillsCache);
                 if (names.length === 0) {
-                    skillList.innerHTML = '<p style="color:#8a9aae;text-align:center;padding:20px;">暂无技能<br><span style="font-size:12px;">对小虾米说「新增技能：XXX」即可学习</span></p>';
+                    skillList.innerHTML = '<p style="color:#8a9aae;text-align:center;padding:20px;">暂无技能<br><span style="font-size:12px;">说「新增技能：XXX」或点 ➕ 即可学习</span></p>';
                     return;
                 }
-
                 let html = '';
                 names.forEach(name => {
                     const info = skillsCache[name] || {};
@@ -1526,18 +1887,16 @@
                 updateSkillCount();
                 setTimeout(renderSkills, 200);
             }
-
             function closeModal() {
                 modal.classList.remove('active');
             }
-
             manageBtn.addEventListener('click', openModal);
             closeModalBtn.addEventListener('click', closeModal);
             modal.addEventListener('click', (e) => {
                 if (e.target === modal) closeModal();
             });
 
-            // ===== 环境能力（动态渲染：只显示实际存在的能力） =====
+            // ===== 环境能力（动态渲染） =====
             function renderEnv(caps) {
                 const rows = [];
                 rows.push(['平台', caps.platform || '未知']);
@@ -1577,14 +1936,13 @@
                     envBody.innerHTML = '<p style="color:#ff7d7d;text-align:center;padding:20px;">无法获取环境信息</p>';
                 }
             }
-
             envBtn.addEventListener('click', openEnvModal);
             closeEnvModalBtn.addEventListener('click', () => envModal.classList.remove('active'));
             envModal.addEventListener('click', (e) => {
                 if (e.target === envModal) envModal.classList.remove('active');
             });
 
-            // ===== 新增技能（模板 + 预览 + 确认） =====
+            // ===== 新增技能（模板 + 学习三要素 + 预览 + 确认） =====
             const addSkillModal = document.getElementById('addSkillModal');
             const addSkillBtn = document.getElementById('addSkillBtn');
             const closeAddSkillBtn = document.getElementById('closeAddSkillBtn');
@@ -1597,14 +1955,14 @@
             const previewName = document.getElementById('previewName');
             const previewDesc = document.getElementById('previewDesc');
             const previewCode = document.getElementById('previewCode');
-
-            let pendingSkill = null;       // {name, desc, code}
-            let selectedTemplate = null;   // 当前选中的模板名
-            let previewTimer = null;
-            let previewSeq = 0;
             const learnMaterial = document.getElementById('learnMaterial');
             const learnContent = document.getElementById('learnContent');
             const learnLevel = document.getElementById('learnLevel');
+
+            let pendingSkill = null;
+            let selectedTemplate = null;
+            let previewTimer = null;
+            let previewSeq = 0;
 
             async function openAddSkillModal() {
                 addSkillModal.classList.add('active');
@@ -1654,7 +2012,6 @@
                     preview();
                 }
             });
-            // 学习模式：三要素任一填写 → 自动预览（组合成描述）
             [learnMaterial, learnContent, learnLevel].forEach(el => {
                 el.addEventListener('input', () => {
                     clearTimeout(previewTimer);
@@ -1671,7 +2028,6 @@
                 if (selectedTemplate) {
                     body = { template: selectedTemplate };
                 } else if (m || c || l) {
-                    // 学习模式：把三要素组合成描述
                     body = { description: `目标材料：${m}。学习内容：${c}。学习程度：${l || '完全掌握'}` };
                 } else if (description) {
                     body = { description };
@@ -1685,7 +2041,7 @@
                         body: JSON.stringify(body)
                     });
                     const data = await res.json();
-                    if (seq !== previewSeq) return;  // 过期响应丢弃
+                    if (seq !== previewSeq) return;
                     if (!res.ok || !data.success) {
                         previewBox.style.display = 'none';
                         addConfirmBtn.disabled = true;
@@ -1750,6 +2106,31 @@
                 if (e.target === addSkillModal) closeAddSkillModal();
             });
 
+            // ===== 设置与调试 =====
+            function openSettings() {
+                settingsModal.classList.add('active');
+            }
+            function closeSettings() {
+                settingsModal.classList.remove('active');
+            }
+            settingsBtn.addEventListener('click', openSettings);
+            closeSettingsBtn.addEventListener('click', closeSettings);
+            settingsModal.addEventListener('click', (e) => {
+                if (e.target === settingsModal) closeSettings();
+            });
+            document.getElementById('exportBtn').addEventListener('click', exportChat);
+            document.getElementById('clearHistoryBtn').addEventListener('click', () => {
+                sentHistory = [];
+                saveHistory();
+                showToast('发送记录已清空');
+            });
+            document.getElementById('clearChatBtn').addEventListener('click', () => {
+                if (confirm('确定要清空所有对话吗？')) {
+                    clearChat();
+                    closeSettings();
+                }
+            });
+
             // ===== 事件绑定 =====
             clearBtn.addEventListener('click', () => {
                 if (confirm('确定要清空所有对话吗？')) {
@@ -1759,9 +2140,7 @@
 
             sendBtn.addEventListener('click', sendMessage);
 
-            // 键盘事件：Enter 发送 / Shift+Enter 换行 / ↑↓ 浏览历史
             input.addEventListener('keydown', (e) => {
-                // 中文输入法组合期间不拦截
                 if (e.isComposing || e.keyCode === 229) return;
 
                 if (e.key === 'Enter' && !e.shiftKey) {
@@ -1818,18 +2197,16 @@
                 addMessage(
                     '你好！我是小虾米 🦐\n\n目前是**最简状态**：\n' +
                     '• 聊天问答 · 记住你的事情（名字/偏好/事实）\n' +
-                    '• 想让我学新技能，说「新增技能：XXX」\n' +
+                    '• 想让我学新技能：说「学习技能：材料：xxx，学习内容：xxx，要学习到：完全掌握」\n' +
                     '• 技能出错我会自己修复\n\n' +
                     '💡 小技巧：\n' +
-                    '• 把鼠标移到消息上可以**复制 / 引用**回答\n' +
-                    '• 按 **↑ ↓ 键** 浏览你发送过的消息记录',
+                    '• 消息悬停可 **复制 / 引用 / 查看原始**（耗时显示便于调试）\n' +
+                    '• 按 **↑ ↓ 键** 浏览发送记录；🌓 切换暗色主题；⋯ 打开设置',
                     false
                 );
             }, 300);
 
             input.focus();
-
-            // 每30秒更新技能计数
             setInterval(updateSkillCount, 30000);
         })();
     </script>
