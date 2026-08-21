@@ -732,6 +732,15 @@
             text-overflow: ellipsis;
         }
 
+        .skill-item.disabled {
+            opacity: 0.55;
+        }
+        .skill-item .state-tag {
+            font-size: 11px;
+            color: var(--muted);
+            margin-top: 2px;
+        }
+
         /* Toggle switch */
         .switch {
             position: relative;
@@ -1078,7 +1087,8 @@
                     if (!res.ok) throw new Error('技能接口异常');
                     const data = await res.json();
                     const skills = data.skills || {};
-                    const count = Object.keys(skills).length;
+                    // 头部只显示"已启用"的技能数；skillsCache 保留全部（含禁用）供弹窗使用
+                    const count = Object.values(skills).filter(s => s && s.enabled !== false).length;
                     skillCount.textContent = `${count} 个技能`;
                     skillsCache = skills;
                     setStatus(true, '在线');
@@ -1309,14 +1319,18 @@
                     const info = skillsCache[name] || {};
                     const safeName = escapeHtml(name);
                     const safeDesc = escapeHtml(info.description || '无描述');
+                    const enabled = info.enabled !== false;
+                    const disabledCls = enabled ? '' : ' disabled';
+                    const stateTag = enabled ? '' : '<div class="state-tag">⏸ 已禁用</div>';
                     html += `
-                        <div class="skill-item">
+                        <div class="skill-item${disabledCls}">
                             <div class="info">
                                 <div class="name">${safeName}</div>
                                 <div class="desc">${safeDesc}</div>
+                                ${stateTag}
                             </div>
                             <label class="switch">
-                                <input type="checkbox" checked data-name="${safeName}">
+                                <input type="checkbox" ${enabled ? 'checked' : ''} data-name="${safeName}">
                                 <span class="slider"></span>
                             </label>
                         </div>
@@ -1338,14 +1352,9 @@
                     });
                     const data = await res.json();
                     if (data.success) {
-                        if (!enabled) {
-                            delete skillsCache[name];
-                            showToast(`已禁用 ${name}`);
-                        } else {
-                            showToast(`已启用 ${name}`);
-                        }
+                        showToast(data.message || (enabled ? '已启用' : '已禁用'));
+                        await updateSkillCount();
                         renderSkills();
-                        updateSkillCount();
                     } else {
                         checkbox.checked = !enabled;
                         showToast(data.error || '操作失败');

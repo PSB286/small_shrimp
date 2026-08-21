@@ -82,11 +82,44 @@ class SkillManager:
             return f"[错误] 执行 {skill_name} 失败: {str(e)}"
 
     def get_skills_info(self):
-        """获取所有技能信息（供 API 使用）"""
+        """获取所有已启用技能信息（供 API 使用）"""
         return {name: {
             "description": info["description"],
             "params": info["params"]
         } for name, info in self.skills.items()}
+
+    def get_all_skills_info(self):
+        """
+        获取所有技能信息（含已禁用的 .py.disabled），带 enabled 标记。
+        供前端技能管理弹窗展示开/关状态。
+        """
+        info = self.get_skills_info()
+        for name in info:
+            info[name]["enabled"] = True
+
+        # 扫描已禁用的技能文件
+        if os.path.isdir(self.skills_dir):
+            for filename in sorted(os.listdir(self.skills_dir)):
+                if filename.endswith(".py.disabled"):
+                    name = filename[: -len(".py.disabled")]
+                    info[name] = {
+                        "description": self._read_disabled_description(filename),
+                        "params": {},
+                        "enabled": False,
+                    }
+        return info
+
+    def _read_disabled_description(self, filename):
+        """读取已禁用技能的描述（尽力而为）"""
+        filepath = os.path.join(self.skills_dir, filename)
+        try:
+            spec = importlib.util.spec_from_file_location("_disabled_" + filename, filepath)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            meta = getattr(module, "__skill_meta__", {})
+            return meta.get("description", filename) if isinstance(meta, dict) else filename
+        except Exception:
+            return filename
 
     def get_skill_code(self, skill_name: str) -> str:
         """获取技能源码"""
@@ -97,8 +130,11 @@ class SkillManager:
             return f.read()
 
     def skill_exists(self, skill_name: str) -> bool:
-        """检查技能是否存在"""
-        return skill_name in self.skills
+        """检查技能是否存在（启用或禁用状态都算）"""
+        if skill_name in self.skills:
+            return True
+        return os.path.exists(os.path.join(self.skills_dir, f"{skill_name}.py")) or \
+               os.path.exists(os.path.join(self.skills_dir, f"{skill_name}.py.disabled"))
 
     def get_skill_tier(self, skill_name: str) -> int:
         """获取技能级别（0=系统核心 1=环境基础 2=学习生成）"""
@@ -208,21 +244,28 @@ class SkillManager:
             lines.append(f"  📦 {name} : {info['description']}")
         return "\n".join(lines)
 
-    def toggle_skill(self, skill_name: str, enabled: bool) -> bool:
-        """切换技能启用状态"""
-        if skill_name not in self.skills:
-            return False
-
+    def toggle_skill(self, skill_name: str, enabled: bool):
+        """
+        切换技能启用/禁用状态。
+        用 os.replace（覆盖式）避免 Windows 上目标已存在时报 WinError183。
+        返回 (success, message)
+        """
         filepath = os.path.join(self.skills_dir, f"{skill_name}.py")
         disabled_path = os.path.join(self.skills_dir, f"{skill_name}.py.disabled")
 
-        if enabled:
-            if os.path.exists(disabled_path):
-                os.rename(disabled_path, filepath)
+        try:
+            if enabled:
+                if not os.path.exists(disabled_path):
+                    return False, f"技能 {skill_name} 不在禁用状态（无 {skill_name}.py.disabled）"
+                os.replace(disabled_path, filepath)
                 self.reload_skills()
-        else:
-            if os.path.exists(filepath):
-                os.rename(filepath, disabled_path)
+                return True, f"技能 {skill_name} 已启用"
+            else:
+                if not os.path.exists(filepath):
+                    return False, f"技能 {skill_name} 不存在或已禁用"
+                os.replace(filepath, disabled_path)
                 self.reload_skills()
-
-        return True
+                return True, f"技能 {skill_name} 已禁用"
+        except Exception as e:
+            logger.error(f"[SkillManager] 切换技能 {skill_name} 失败: {e}", exc_info=True)
+            return False, f"切换失败: {str(e)}"

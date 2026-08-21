@@ -165,11 +165,11 @@ async def update_environment(request: Request):
 
 # ==================== 技能管理接口 ====================
 
-# 定义 /skills 路径的 GET 处理函数，返回当前所有技能信息
+# 定义 /skills 路径的 GET 处理函数，返回所有技能（含已禁用，带开关状态）
 @app.get("/skills")
 async def get_skills():
-    # 从技能管理器获取所有技能信息（名称、描述等）
-    skills_info = skill_mgr.get_skills_info()
+    # 从技能管理器获取所有技能信息（含 enabled 标记）
+    skills_info = skill_mgr.get_all_skills_info()
     # 返回 JSON 格式的技能列表
     return JSONResponse({"skills": skills_info})
 
@@ -189,13 +189,16 @@ async def toggle_skill(request: Request):
         if not skill_mgr.skill_exists(skill_name):
             return JSONResponse({"error": f"技能 {skill_name} 不存在"}, status_code=404)
 
-        result = skill_mgr.toggle_skill(skill_name, enabled)
+        success, message = skill_mgr.toggle_skill(skill_name, enabled)
+
+        if not success:
+            return JSONResponse({"error": message}, status_code=400)
 
         return JSONResponse({
             "success": True,
             "skill_name": skill_name,
             "enabled": enabled,
-            "message": f"技能 {skill_name} 已{'启用' if enabled else '禁用'}"
+            "message": message
         })
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
