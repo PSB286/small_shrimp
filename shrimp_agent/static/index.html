@@ -1372,22 +1372,33 @@
                 if (e.target === modal) closeModal();
             });
 
-            // ===== 环境能力 =====
+            // ===== 环境能力（动态渲染：只显示实际存在的能力） =====
             function renderEnv(caps) {
-                const rows = [
-                    ['平台', caps.platform || '未知'],
-                    ['Python', caps.python || '未知'],
-                    ['联网', caps.network ? '✅ 可联网' : '❌ 离线'],
-                    ['舵机', (caps.actuators || []).length > 0 ? `${caps.actuators.length} 个` : '无'],
-                    ['屏幕', caps.display ? '有' : '无'],
-                    ['麦克风', caps.audio_in ? '有' : '无'],
-                    ['喇叭', caps.audio_out ? '有' : '无'],
-                    ['可用库', (caps.libs || []).join(', ') || '无'],
-                    ['来源', caps.source || 'probe']
-                ];
-                envBody.innerHTML = rows.map(([k, v]) =>
+                const rows = [];
+                rows.push(['平台', caps.platform || '未知']);
+                if (caps.python) rows.push(['Python', caps.python]);
+                rows.push(['联网', caps.network ? '✅ 可联网' : '❌ 离线']);
+                if (Array.isArray(caps.actuators) && caps.actuators.length) {
+                    rows.push(['舵机', `${caps.actuators.length} 个`]);
+                }
+                if (caps.display) rows.push(['屏幕', '有']);
+                if (caps.audio_in) rows.push(['麦克风', '有']);
+                if (caps.audio_out) rows.push(['喇叭', '有']);
+                if (caps.camera) rows.push(['摄像头', '有']);
+                if (Array.isArray(caps.libs) && caps.libs.length) {
+                    rows.push(['可用库', caps.libs.join(', ')]);
+                }
+                rows.push(['来源', caps.source || 'probe']);
+                if (caps.probed_at) rows.push(['探测时间', caps.probed_at]);
+
+                const html = rows.map(([k, v]) =>
                     `<div class="env-row"><span class="k">${escapeHtml(k)}</span><span class="v">${escapeHtml(v)}</span></div>`
                 ).join('');
+                envBody.innerHTML = html + (
+                    '<p style="color:#8a9aae;font-size:12px;padding:10px 2px 0;">' +
+                    '能力随平台自动探测：Windows 不查 I2C/GPIO/OLED，Linux 才查硬件接口。<br>' +
+                    '可用 POST /environment 手动补充（如声明舵机布局）。</p>'
+                );
             }
 
             async function openEnvModal() {

@@ -25,7 +25,7 @@ python -m uvicorn main:app --host 0.0.0.0 --port 8000
 | 通道 | 方式 | 说明 |
 |---|---|---|
 | ① 主动提供 | 项目根放 `environment.json` | 部署者直接声明硬件（如舵机/屏幕/麦克风） |
-| ② 自动探测 | 启动自动探测 | OS/Python/网络/可用库/舵机板/屏幕/麦克风，失败记"无" |
+| ② 自动探测 | 启动自动探测，**平台驱动** | 先探测平台，再按平台查必要能力：Linux 查 I2C/GPIO/舵机板/OLED，Windows/macOS 只查网络/音频/摄像头/可用库 |
 | ③ 界面修正 | `POST /environment` | 查看/修改能力清单，改完自动生效 |
 
 最简状态不假设任何硬件：Windows 上探测结果只有 `platform/python/network/libs`，

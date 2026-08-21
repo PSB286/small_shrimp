@@ -28,11 +28,24 @@ from core.self_optimizer import SelfOptimizer
 from config import settings
 
 # ==================== 启动初始化 ====================
-# 1. 环境探测：生成/读取能力清单（技能生成与硬件抽象的唯一依据）
+# 1. 环境探测：平台驱动，生成/读取能力清单（技能生成与硬件抽象的唯一依据）
 probe = EnvironmentProbe()
 capabilities = probe.ensure_capabilities()
-logger.info(f"[Main] 环境能力: 舵机x{len(capabilities.get('actuators') or [])} "
-            f"屏幕={bool(capabilities.get('display'))} 麦克风={bool(capabilities.get('audio_in'))}")
+_caps_parts = []
+if capabilities.get("actuators"):
+    _caps_parts.append(f"舵机x{len(capabilities['actuators'])}")
+if capabilities.get("display"):
+    _caps_parts.append("屏幕")
+if capabilities.get("audio_in"):
+    _caps_parts.append("麦克风")
+if capabilities.get("audio_out"):
+    _caps_parts.append("喇叭")
+if capabilities.get("camera"):
+    _caps_parts.append("摄像头")
+if capabilities.get("network"):
+    _caps_parts.append("联网")
+logger.info(f"[Main] 环境能力: {capabilities.get('platform', '未知')} | "
+            + (", ".join(_caps_parts) if _caps_parts else "无特殊硬件（纯聊天+记忆）"))
 
 # 2. 创建 FastAPI 应用实例
 app = FastAPI(title="GGB小虾米 · 环境自适应智能助手")

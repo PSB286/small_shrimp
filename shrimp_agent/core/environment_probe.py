@@ -1,8 +1,9 @@
 """
-环境探测 - 三通道合一
+环境探测 - 三通道合一（平台驱动）
 
 通道① 主动提供: environment.json（部署者声明硬件，优先级最高）
-通道② 自动探测: 有限集合的简单探测器，逐个试，失败记"无"
+通道② 自动探测: 先探测平台，再按平台选择"必要能力"探测器
+                （Windows/macOS 不查 I2C/GPIO/OLED；Linux 才查硬件接口）
 通道③ 界面修正: /environment 接口查看/修改后写回
 
 所有探测结果汇总为 data/capabilities.json —— 技能生成、
@@ -89,13 +90,26 @@ def probe_camera():
 
 
 def probe_libs():
-    """探测对技能生成有意义的第三方库"""
-    names = [
-        "requests", "PIL", "smbus2", "luma.oled", "pyaudio",
-        "RPi.GPIO", "numpy", "cv2", "pygame", "pypinyin",
-    ]
+    """探测对技能生成有意义的第三方库（随平台自动适配）"""
+    names = ["requests", "PIL", "numpy", "cv2", "pygame", "pypinyin"]
+    if os.name == "posix":
+        # Linux/树莓派相关的硬件库
+        names += ["smbus2", "luma.oled", "pyaudio", "RPi.GPIO", "picamera"]
+    else:
+        # Windows/macOS 桌面相关
+        names += ["pyaudio", "pyautogui", "psutil"]
     return {name: _importable(name) for name in names}
 
+
+# ==================== 平台驱动的探测器清单 ====================
+
+# 各探测器适用的平台；不在列表中的探测器 = 全平台通用
+PROBE_PLATFORMS = {
+    "i2c": ["Linux"],          # I2C 总线只有 Linux 才有
+    "gpio": ["Linux"],         # RPi.GPIO 仅树莓派
+    "servo_board": ["Linux"],  # PCA9685 舵机板走 I2C
+    "display": ["Linux"],      # SSD1306 OLED 走 I2C
+}
 
 PROBES = {
     "platform": probe_platform,
@@ -109,7 +123,14 @@ PROBES = {
 }
 
 
-# ==================== 探测 → 能力清单 ====================
+def applicable_probes():
+    """根据当前平台返回应运行的探测器名列表"""
+    system = platform.system()
+    return [
+        name for name in PROBES
+        if name not in PROBE_PLATFORMS or system in PROBE_PLATFORMS[name]
+    ]
+
 
 # ==================== 探测 → 能力清单 ====================
 
@@ -131,6 +152,8 @@ def _capabilities_from_probes(probes, libs):
         caps["display"] = {"type": "display"}
     if probes.get("mic", {}).get("available"):
         caps["audio_in"] = {"type": "mic"}
+    if probes.get("camera", {}).get("available"):
+        caps["camera"] = {"type": "camera"}
     return caps
 
 
@@ -145,9 +168,15 @@ class EnvironmentProbe:
     # ---- 通道②: 自动探测 ----
 
     def run_probes(self):
-        """运行所有探测器，返回 {name: {"available":.., "detail":..}}"""
+        """
+        平台驱动的自动探测：
+        先探平台，再按平台只跑"必要能力"探测器（见 applicable_probes）
+        """
         self.probes = {}
-        for name, fn in PROBES.items():
+        names = applicable_probes()
+        logger.info("[Probe] 平台=%s，运行探测器: %s", platform.system(), names)
+        for name in names:
+            fn = PROBES[name]
             try:
                 self.probes[name] = fn()
             except Exception as e:
