@@ -39,6 +39,9 @@ class AgentLoop:
         # 最近用过的技能（对话连续性："追加xxx" → 追加到刚用过的技能）
         self.last_skill = None
 
+        # 歧义确认状态：技能返回 __ASK__ 标记后挂起，等用户确认
+        self.pending_ask = None
+
         saved_name = self.permanent_memory.get_user_name()
         if saved_name:
             self.agent_name = saved_name
@@ -70,6 +73,14 @@ class AgentLoop:
             history = []
 
         logger.info(f"[Agent] 处理: {user_input[:50]}...")
+
+        # 有挂起的歧义确认 → 优先处理用户的确认/取消
+        if self.pending_ask:
+            resolved = self._handle_pending_ask(user_input)
+            if resolved is not None:
+                return resolved
+            # 不是确认 → 重新提问
+            return self._ask_clarification(self.pending_ask["kind"], self.pending_ask["topic"])
 
         for predicate, handler in self._memory_handlers(user_input):
             if predicate(user_input):
@@ -703,6 +714,13 @@ class AgentLoop:
         self.last_skill = skill_name
         try:
             result = self.skills.execute(skill_name, params or {})
+            # 技能返回歧义确认标记 __ASK__:kind|detail
+            if isinstance(result, str):
+                m = re.match(r'^__ASK__:(\w+)\|(.*)$', result.strip(), re.DOTALL)
+                if m:
+                    self.pending_ask = {"kind": m.group(1), "topic": m.group(2).strip()}
+                    logger.info("[Agent] 技能 %s 请求歧义确认: %s", skill_name, m.group(1))
+                    return self._ask_clarification(m.group(1), m.group(2).strip())
             if result and not result.startswith("[错误]"):
                 self.permanent_memory.record_skill_result(skill_name, True)
                 return result
@@ -712,6 +730,58 @@ class AgentLoop:
         except Exception as e:
             self.permanent_memory.record_skill_result(skill_name, False, str(e))
             return self._handle_skill_failure(skill_name, str(e))
+
+    def _ask_clarification(self, kind: str, topic: str) -> str:
+        """针对歧义请求提问，让用户确认用哪一种"""
+        if kind == "creative_poem":
+            return (
+                f"📋 **需要你确认一下**：你说要写「{topic}」，是指——\n\n"
+                f"A. 把《{topic}》的内容（完整诗词/文章）写进记事本\n"
+                f"B. 只写入文字「{topic}」\n\n"
+                f"回复 A 或 B（或直接描述想要的效果），取消说「取消」。"
+            )
+        return f"📋 你的请求有歧义，请说明具体想要哪种效果（取消说「取消」）。"
+
+    def _handle_pending_ask(self, user_input: str):
+        """处理用户的歧义确认回复；不是确认返回 None（重新提问）"""
+        if not self.pending_ask:
+            return None
+        kind = self.pending_ask["kind"]
+        topic = self.pending_ask["topic"]
+        text = (user_input or "").strip()
+
+        # 取消
+        if any(k in text for k in ["取消", "算了", "不用了", "不了", "算了算了"]):
+            self.pending_ask = None
+            return "好的，已取消。😊"
+
+        if kind == "creative_poem":
+            if re.fullmatch(r'[aA]', text) or any(k in text for k in ["诗的内容", "写诗", "作诗", "内容", "全诗", "完整"]):
+                self.pending_ask = None
+                content = self._generate_creative_content(topic)
+                if not content or content.startswith("[创作失败]"):
+                    return content or "❌ 创作失败，请稍后再试。"
+                return self._execute_skill("open_notepad", {"param": content})
+            if re.fullmatch(r'[bB]', text) or any(k in text for k in ["文字", "字面", "原样", "几个字"]):
+                self.pending_ask = None
+                return self._execute_skill("open_notepad", {"param": topic})
+        return None
+
+    def _generate_creative_content(self, topic: str) -> str:
+        """调用 LLM 创作内容（如以某题为诗）"""
+        try:
+            from llm.cloud_engine import CloudEngine
+            cloud = CloudEngine()
+            result = cloud.chat(
+                f"请创作一首以《{topic}》为题的诗词，直接输出完整的诗词内容，不要任何解释、不要标题以外的说明文字。"
+            )
+            if isinstance(result, dict):
+                result = result.get("answer", "")
+            content = str(result or "").strip()
+            return content if content else "[创作失败] 没有生成内容"
+        except Exception as e:
+            logger.error(f"[Agent] 创作失败: {e}")
+            return f"[创作失败] {str(e)}"
 
     def _handle_skill_failure(self, skill_name: str, error: str) -> str:
         """技能失败处理：T1 自动修复；T2 连续失败停用待确认"""

@@ -54,6 +54,26 @@ def _strip_action(req, action_words):
     return text.strip(" ，。！!？?：:、\n\t")
 
 
+# 创作类请求检测：写诗/写文章等（内容需要 AI 创作，先确认是写内容还是写文字）
+_CREATIVE_RES = [
+    re.compile(r'写(?:一|两|几)?[首篇段]\s*([^\s，。！!？?]+)'),          # 写一首静夜思 / 写一篇作文
+    re.compile(r'写(?:一|两|几)?(?:首|篇|段)?\s*(?:诗|古诗|诗词|文章|作文|词|诗篇|对联|祝福语|文案)'),  # 写诗/写古诗/写文章
+]
+
+
+def _detect_creative(req):
+    """检测创作类请求，返回主题（如 静夜思）；不是创作类返回 None"""
+    for rx in _CREATIVE_RES:
+        m = rx.search(req)
+        if m:
+            rest = m.group(1) if m.lastindex else ""
+            for phrase in _LOCATION_PHRASES:
+                rest = rest.replace(phrase, "")
+            rest = rest.strip(" ，。！!？?：:、\n\t")
+            return rest or "一首诗"
+    return None
+
+
 def _open_memo():
     """打开记忆文件（复用同一个文件）"""
     if os.path.exists(_MEMO_FILE):
@@ -103,6 +123,10 @@ def open_notepad(param: str = ''):
 
     # 4. 写入内容（覆盖，打开窗口展示）
     if any(k in req for k in _WRITE_ACTIONS):
+        # 创作类请求（写诗/写文章）→ 返回确认标记，由 Agent 询问用户
+        creative = _detect_creative(req)
+        if creative:
+            return "__ASK__:creative_poem|%s" % creative
         content = _strip_action(req, _WRITE_ACTIONS + ["内容", "文字"])
         if not content:
             return "请告诉我要写入什么内容"
