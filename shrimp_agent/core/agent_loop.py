@@ -36,6 +36,9 @@ class AgentLoop:
         # 自优化器（技能失败自动修复）
         self.optimizer = SelfOptimizer(self.skills, self.capabilities)
 
+        # 最近用过的技能（对话连续性："追加xxx" → 追加到刚用过的技能）
+        self.last_skill = None
+
         saved_name = self.permanent_memory.get_user_name()
         if saved_name:
             self.agent_name = saved_name
@@ -141,6 +144,16 @@ class AgentLoop:
                 logger.info(f"[SkillMatch] NL match: {skill_name} <- '{user_input_clean}'")
                 return self._execute_skill(skill_name, {"param": user_input_clean})
 
+        # 对话连续性：输入以动作词开头且没提到任何目标词 →
+        # 回退到最近用过的技能（如刚说完记事本，再说"追加45678"就是追加到记事本）
+        last_fallback = re.match(
+            r'^(?:帮我|请|麻烦)?\s*(?:追加|写入|写上|写一下|写|读取|读一下|读|清空|清除|记录|改成)\s*(\S+)',
+            user_input_clean
+        )
+        if last_fallback and self.last_skill and self.last_skill in self.skills.skills:
+            logger.info(f"[SkillMatch] 对话连续性回退: {self.last_skill} <- '{user_input_clean}'")
+            return self._execute_skill(self.last_skill, {"param": user_input_clean})
+
         logger.info("[SkillMatch] No match, passing to cloud.")
         return None
 
@@ -150,6 +163,7 @@ class AgentLoop:
         "读取", "读一下", "读出来", "读", "清空", "清除", "清掉", "追加",
         "记录", "保存", "删除", "设置", "改成", "计算", "搜索", "查询",
         "显示", "播放", "发送", "生成", "创建", "关闭", "说出", "告诉",
+        "打印", "查看", "路径",
     ]
 
     def _natural_language_skill_match(self, user_input: str, skill_name: str, info: dict) -> bool:
@@ -500,18 +514,51 @@ class AgentLoop:
         return "\n".join(lines)
 
     def _is_enhance_skill_query(self, user_input: str) -> bool:
-        return re.search(r'(?:增强|升级|扩展|完善)\s*技能\s*(\w+)', user_input) is not None
+        """识别增强/优化技能意图（多种说法）"""
+        if "技能" not in user_input:
+            return False
+        return any(k in user_input for k in ["增强", "升级", "扩展", "完善", "优化", "改进", "改一下", "调整"])
+
+    def _resolve_skill_name(self, user_input: str) -> str:
+        """从用户话里解析技能名：显式名字 → 目标名词 → 最近用过的技能"""
+        # 1. 显式名字（跟在 增强/优化 技能 后面 或 前面）
+        m = re.search(r'(?:增强|升级|扩展|完善|优化|改进|修复)\s*技能\s*(\w+)', user_input)
+        if m and self.skills.skill_exists(m.group(1)):
+            return m.group(1)
+        m = re.search(r'技能\s*(\w+)\s*(?:增强|升级|扩展|完善|优化|改进)', user_input)
+        if m and self.skills.skill_exists(m.group(1)):
+            return m.group(1)
+        # 2. 目标名词解析（如"记事本技能优化一下" → open_notepad）
+        from core.skill_factory import extract_target
+        for name, info in self.skills.skills.items():
+            target = extract_target(info.get("description", "") or "")
+            if len(target) >= 2 and target in user_input:
+                return name
+        # 3. 最近用过的技能
+        if self.last_skill and self.skills.skill_exists(self.last_skill):
+            return self.last_skill
+        return ""
+
+    def _extract_enhance_instructions(self, user_input: str) -> str:
+        """提取增强指令：去掉'技能...优化一下'这类前缀，剩下的是要加的功能"""
+        # 去掉开头的不满/描述部分，取"优化/增强/改进..."之后的内容
+        m = re.search(r'(?:优化|增强|升级|扩展|完善|改进)(?:一下|一下)?[，,：:\s]*([^。]*。?.*)', user_input, re.DOTALL)
+        if m:
+            return m.group(1).strip()
+        # 兜底：去前缀
+        text = re.sub(r'^(?:你的|这个|那个|这些)?(?:技能)?\w*?(?:还是)?(?:有点|有些|存在)?(?:问题|毛病)[，,：:\s]*', '', user_input)
+        return text.strip()
 
     def _handle_enhance_skill(self, user_input: str) -> str:
         """
         按指令一次性增强技能（保留原功能 + 新增能力）。
         '增强技能 X：追加写入同一个记事本'
+        '这个记事本技能优化一下，打开后打印文件路径'
         """
-        match = re.search(r'(?:增强|升级|扩展|完善)\s*技能\s*(\w+)(?:[:：]\s*(.*))?', user_input)
-        if not match:
+        skill_name = self._resolve_skill_name(user_input)
+        if not skill_name:
             return "请指定要增强的技能名称，例如：'增强技能 open_notepad：追加写入同一个记事本'"
-        skill_name = match.group(1)
-        instructions = (match.group(2) or "").strip()
+        instructions = self._extract_enhance_instructions(user_input)
 
         if not self.skills.skill_exists(skill_name):
             return f"⚠️ 技能 {skill_name} 不存在"
@@ -564,12 +611,13 @@ class AgentLoop:
         )
 
     def _is_fix_skill_query(self, user_input: str) -> bool:
-        return re.search(r'(?:修复|优化|改进|升级|修理)\s*技能\s*(\w+)', user_input) is not None
+        # 修复/修理 = 修 bug；优化/升级/增强 = 增强功能（走 _handle_enhance_skill）
+        return re.search(r'(?:修复|修理)\s*技能\s*(\w+)', user_input) is not None
 
     def _handle_fix_skill(self, user_input: str) -> str:
-        match = re.search(r'(?:修复|优化|改进|升级|修理)\s*技能\s*(\w+)', user_input)
+        match = re.search(r'(?:修复|修理)\s*技能\s*(\w+)', user_input)
         if not match:
-            return "请指定要修复的技能名称，例如：'修复技能 dance'"
+            return "请指定要修复的技能名称，例如：'修复技能 open_notepad'"
         skill_name = match.group(1)
         stats = self.permanent_memory.get_skill_stats(skill_name)
         last_error = stats.get("last_error", "") or "未知错误"
@@ -581,6 +629,7 @@ class AgentLoop:
 
     def _execute_skill(self, skill_name: str, params: dict = None) -> str:
         """执行技能并记录结果；失败时进入自优化流程"""
+        self.last_skill = skill_name
         try:
             result = self.skills.execute(skill_name, params or {})
             if result and not result.startswith("[错误]"):
