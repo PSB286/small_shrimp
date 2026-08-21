@@ -984,6 +984,13 @@ class AgentLoop:
 4. 如果用户说"你好"或"hi"，热情回应
 5. 直接输出自然语言，不要输出JSON格式
 
+【对话上下文（会话内短暂记忆，重要）】
+消息列表里包含本轮之前的对话历史。用户经常会**延续或引用之前的内容**：
+- 刚算完 "1+1=2" 紧接着说 "x3" / "再乘3" → 指 2×3=6（继续上一步运算）
+- "它" / "这个" / "刚才的" / "那首诗" 等指代 → 指上一条相关消息
+- 说"追加/再写/继续" → 延续上一个话题
+请务必结合历史理解当前问题，不要孤立地回答。如果历史不足以确定，再询问用户。
+
 【技能执行协议（重要）】
 如果用户的需求【可以用已安装技能完成】，你的回复必须以一行指令开头，不要只口头描述：
 __EXEC__:技能名
@@ -995,7 +1002,15 @@ __EXEC__:技能名|用户完整请求
 
 当前时间：{datetime.datetime.now().strftime('%Y年%m月%d日 %H:%M:%S')}"""
 
-            messages = [
+            # 提取最近一轮对话（用户+助手），显式放在消息最前面，强化短暂记忆
+            recent_turns = []
+            for msg in (history or [])[-4:]:
+                role = "我" if msg.get("role") == "user" else "小虾米"
+                recent_turns.append(f"{role}: {str(msg.get('content', ''))[:120]}")
+            messages = []
+            if recent_turns:
+                messages.append({"role": "system", "content": "【最近对话回顾】\n" + "\n".join(recent_turns)})
+            messages += [
                 {"role": "system", "content": system_prompt},
                 *history[-10:],
                 {"role": "user", "content": user_input}
