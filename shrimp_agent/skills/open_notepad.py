@@ -44,6 +44,14 @@ def _write_content(content):
         f.write(content)
 
 
+def _append_content(content):
+    """追加内容（自动换行分隔）"""
+    existing = _read_content()
+    if existing and not existing.endswith("\n"):
+        existing += "\n"
+    _write_content(existing + content)
+
+
 def _strip_action(req, action_words):
     """提取内容：先剥位置短语，再按长度降序剥动作词，最后清理标点"""
     text = req
@@ -54,10 +62,10 @@ def _strip_action(req, action_words):
     return text.strip(" ，。！!？?：:、\n\t")
 
 
-# 创作类请求检测：写诗/写文章等（内容需要 AI 创作，先确认是写内容还是写文字）
+# 创作类请求检测：写/做/作/创作 诗、文章等（内容需要 AI 创作，先确认是写内容还是写文字）
 _CREATIVE_RES = [
-    re.compile(r'写(?:一|两|几)?[首篇段]\s*([^\s，。！!？?]+)'),          # 写一首静夜思 / 写一篇作文
-    re.compile(r'写(?:一|两|几)?(?:首|篇|段)?\s*(?:诗|古诗|诗词|文章|作文|词|诗篇|对联|祝福语|文案)'),  # 写诗/写古诗/写文章
+    re.compile(r'(?:写|做|作|创作)(?:一|两|几)?[首篇段]\s*([^\s，。！!？?]+)'),  # 写一首静夜思 / 做一首诗 / 写一篇作文
+    re.compile(r'(?:写|做|作|创作)(?:一|两|几)?(?:首|篇|段)?\s*(?:诗|古诗|诗词|文章|作文|词|诗篇|对联|祝福语|文案)'),  # 写诗/做诗/创作文章
 ]
 
 
@@ -103,6 +111,19 @@ def open_notepad(param: str = ''):
         _open_memo()
         return "记事本已打开，并成功写入：%s（文件路径：%s）" % (content, _MEMO_FILE)
 
+    # 0.6 原文追加协议：__RAW_APPEND__:内容 → 原样追加到已有内容后面
+    if req.startswith("__RAW_APPEND__:"):
+        content = req[len("__RAW_APPEND__:"):].strip()
+        _append_content(content)
+        _open_memo()
+        return "已追加到记事本：%s（文件路径：%s）" % (content, _MEMO_FILE)
+
+    # 0.7 创作类请求（写/做一首诗、文章等）→ 先确认内容 vs 文字，并保留 写入/追加 意图
+    creative = _detect_creative(req)
+    if creative:
+        action = "append" if any(k in req for k in ["追加", "接着", "后面", "加", "续"]) else "write"
+        return "__ASK__:creative_poem|%s|%s" % (creative, action)
+
     # 0. 打印/显示文件路径（优先级最高，避免"打印路径"被当成其他动作）
     if "路径" in req and any(k in req for k in ["打印", "显示", "查看", "查", "告诉", "是什么", "在哪", "哪里"]):
         return "记事本文件路径：%s" % _MEMO_FILE
@@ -124,17 +145,16 @@ def open_notepad(param: str = ''):
         content = _strip_action(req, _APPEND_ACTIONS + ["内容", "文字"])
         if not content:
             return "请告诉我要追加什么内容"
-        _write_content(_read_content() + content)
+        _append_content(content)
         _open_memo()
         return "已追加到记事本：%s（文件路径：%s）" % (content, _MEMO_FILE)
 
     # 4. 写入内容（覆盖，打开窗口展示）
     if any(k in req for k in _WRITE_ACTIONS):
-        # 创作类请求（写诗/写文章）→ 返回确认标记，由 Agent 询问用户
-        creative = _detect_creative(req)
-        if creative:
-            return "__ASK__:creative_poem|%s" % creative
         content = _strip_action(req, _WRITE_ACTIONS + ["内容", "文字"])
+        # 去掉"把《X》这首诗："这类包装（云端传入的诗可能带前缀）
+        content = re.sub(r'^把《?[^》\n]+》?(?:这|那)?首?诗?[：:，,]?\s*', '', content)
+        content = re.sub(r'^把[^\n]{1,12}?(?:这首|那首)?诗[：:，,]?\s*', '', content)
         if not content:
             return "请告诉我要写入什么内容"
         _write_content(content)

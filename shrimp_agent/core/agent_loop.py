@@ -802,9 +802,14 @@ class AgentLoop:
             if isinstance(result, str):
                 m = re.match(r'^__ASK__:(\w+)\|(.*)$', result.strip(), re.DOTALL)
                 if m:
-                    self.pending_ask = {"kind": m.group(1), "topic": m.group(2).strip()}
+                    parts = m.group(2).split("|")
+                    self.pending_ask = {
+                        "kind": m.group(1),
+                        "topic": parts[0].strip(),
+                        "action": parts[1].strip() if len(parts) > 1 else "write",
+                    }
                     logger.info("[Agent] 技能 %s 请求歧义确认: %s", skill_name, m.group(1))
-                    return self._ask_clarification(m.group(1), m.group(2).strip())
+                    return self._ask_clarification(m.group(1), self.pending_ask["topic"])
             if result and not result.startswith("[错误]"):
                 self.permanent_memory.record_skill_result(skill_name, True)
                 return result
@@ -840,15 +845,19 @@ class AgentLoop:
             return "好的，已取消。😊"
 
         if kind == "creative_poem":
+            action = self.pending_ask.get("action", "write")
             if re.fullmatch(r'[aA]', text) or any(k in text for k in ["诗的内容", "写诗", "作诗", "内容", "全诗", "完整"]):
                 self.pending_ask = None
                 content = self._generate_creative_content(topic)
                 if not content or content.startswith("[创作失败]"):
                     return content or "❌ 创作失败，请稍后再试。"
-                return self._execute_skill("open_notepad", {"param": "__RAW__:" + content})
+                # 按原请求意图：写入（覆盖）或追加
+                prefix = "__RAW_APPEND__:" if action == "append" else "__RAW__:"
+                return self._execute_skill("open_notepad", {"param": prefix + content})
             if re.fullmatch(r'[bB]', text) or any(k in text for k in ["文字", "字面", "原样", "几个字"]):
                 self.pending_ask = None
-                return self._execute_skill("open_notepad", {"param": topic})
+                prefix = "__RAW_APPEND__:" if action == "append" else "__RAW__:"
+                return self._execute_skill("open_notepad", {"param": prefix + topic})
 
         if kind == "write_reference":
             skill = self.pending_ask.get("skill", "open_notepad")
