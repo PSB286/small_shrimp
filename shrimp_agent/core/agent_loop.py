@@ -797,6 +797,7 @@ class AgentLoop:
         if not skill_name:
             return "请指定要增强的技能名称，例如：'增强技能 open_notepad：追加写入同一个记事本'"
         instructions = self._extract_enhance_instructions(user_input)
+        user_specified = bool(instructions.strip())  # 用户是否明确说了要加什么
 
         if not self.skills.skill_exists(skill_name):
             return f"⚠️ 技能 {skill_name} 不存在"
@@ -821,8 +822,8 @@ class AgentLoop:
                 return f"请具体说明要增强什么，例如：'增强技能 {skill_name}：追加写入同一个记事本'"
             instructions = "；".join(f"{s.get('title', '')}（{s.get('detail', '')}）" for s in suggestions[:3])
 
-        # 已具备该功能？不跑易失败的 LLM 重写，直接告知
-        if self._enhancement_covered(skill_name, instructions, desc):
+        # 已具备该功能？只在【用户明确指定功能】时才跳过（自动建议不触发，避免误报"已具备"）
+        if user_specified and self._enhancement_covered(skill_name, instructions, desc):
             return (
                 f"ℹ️ 这个功能 **{skill_name}** 已经具备了：{desc}\n\n"
                 f"直接说「执行{skill_name}」使用；想加**新**功能就说「增强技能 {skill_name}：具体功能」。"
@@ -1066,6 +1067,10 @@ class AgentLoop:
 3. 如果用户想学新东西（如"我想让你学会跳舞"），引导说"新增技能：跳舞"
 4. 如果用户说"你好"或"hi"，热情回应
 5. 直接输出自然语言，不要输出JSON格式
+6. 你【不能直接修改/更新技能文件】。如果用户要求改技能（如"改用cmd方式"、
+   "优化一下技能"），引导他说「增强技能 技能名：要加的功能」或「学习技能：材料…」，
+   【绝对不要声称"技能已更新/已修改完成"】——你只能通过 __EXEC__ 执行技能，
+   不能改技能本身。
 
 【对话上下文（会话内短暂记忆，重要）】
 消息列表里包含本轮之前的对话历史。用户经常会**延续或引用之前的内容**：
